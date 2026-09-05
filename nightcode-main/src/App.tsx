@@ -1,0 +1,376 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import Editor from '@monaco-editor/react'
+import { create } from 'zustand'
+import { AnimatePresence, motion } from 'framer-motion'
+import { sendCopilotMessage, type CopilotMessage } from './api/copilot'
+import { collaborationUrl, type CollaborationMessage } from './api/collaboration'
+import { getCodingStats, type CodingStats } from './api/stats'
+import { getSnippets, toggleSnippetReaction, type Snippet } from './api/snippets'
+import { getThemes, toggleTheme, type Theme } from './api/themes'
+import {
+  Braces, ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircleDot, Code2,
+  Command, Copy, FileCode2, FileJson, FileText, FolderOpen,
+  GitBranch, GitCommitHorizontal, LayoutGrid, Maximize2,
+  MoreHorizontal, PanelBottom, Play, Plus, Radio, Search, Settings2,
+  Sparkles, Timer, X, Zap
+} from 'lucide-react'
+
+type Accent = 'violet' | 'lime' | 'pink' | 'cyan'
+type FileItem = { name: string; path: string; language: string; icon: 'code' | 'json' | 'text'; content: string }
+const supportedLanguages = [{ label: 'TypeScript React', extension: 'tsx', language: 'typescript' }, { label: 'JavaScript', extension: 'js', language: 'javascript' }, { label: 'Python', extension: 'py', language: 'python' }, { label: 'C', extension: 'c', language: 'c' }, { label: 'C++', extension: 'cpp', language: 'cpp' }, { label: 'Java', extension: 'java', language: 'java' }, { label: 'C#', extension: 'cs', language: 'csharp' }, { label: 'Go', extension: 'go', language: 'go' }, { label: 'Rust', extension: 'rs', language: 'rust' }, { label: 'PHP', extension: 'php', language: 'php' }, { label: 'Ruby', extension: 'rb', language: 'ruby' }, { label: 'HTML', extension: 'html', language: 'html' }, { label: 'CSS', extension: 'css', language: 'css' }, { label: 'JSON', extension: 'json', language: 'json' }] as const
+
+type Store = {
+  activeFile: string
+  openFiles: string[]
+  files: FileItem[]
+  accent: Accent
+  sidebarOpen: boolean
+  setActiveFile: (name: string) => void
+  setFiles: (files: FileItem[]) => void
+  updateFile: (name: string, content: string) => void
+  closeFile: (name: string) => void
+  openFile: (name: string) => void
+  setAccent: (accent: Accent) => void
+  toggleSidebar: () => void
+}
+
+const fallbackFiles: FileItem[] = [
+  { name: 'App.tsx', path: 'src/App.tsx', language: 'typescript', icon: 'code', content: 'Unable to reach the local workspace API.' },
+  { name: 'package.json', path: 'package.json', language: 'json', icon: 'json', content: '{}' },
+]
+
+const useNightcode = create<Store>((set) => ({
+  activeFile: 'App.tsx',
+  openFiles: ['App.tsx', 'package.json', 'README.md'],
+  files: fallbackFiles,
+  accent: 'violet',
+  sidebarOpen: true,
+  setActiveFile: (activeFile) => set({ activeFile }),
+  setFiles: (files) => set({ files }),
+  updateFile: (name, content) => set((state) => ({ files: state.files.map((file) => file.name === name ? { ...file, content } : file) })),
+  closeFile: (name) => set((state) => {
+    const next = state.openFiles.filter((file) => file !== name)
+    return { openFiles: next, activeFile: state.activeFile === name ? (next[0] ?? '') : state.activeFile }
+  }),
+  openFile: (name) => set((state) => ({ openFiles: state.openFiles.includes(name) ? state.openFiles : [...state.openFiles, name], activeFile: name })),
+  setAccent: (accent) => set({ accent }),
+  toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+}))
+
+const iconForFile = (file: FileItem) => file.icon === 'json' ? <FileJson size={14} /> : file.icon === 'text' ? <FileText size={14} /> : <FileCode2 size={14} />
+
+function CodingStats() {
+  const [stats, setStats] = useState<CodingStats | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => { getCodingStats().then(setStats).catch((requestError) => setError(requestError instanceof Error ? requestError.message : 'Unable to load stats.')) }, [])
+  if (error) return <div className="feature-view"><div className="feature-kicker"><Timer size={15} /> CODING STATS</div><div className="copilot-error">{error}</div></div>
+  if (!stats) return <div className="feature-view"><div className="feature-kicker"><Timer size={15} /> CODING STATS</div><span>Loading activity...</span></div>
+  const languages = Object.entries(stats.byLanguage).sort(([, left], [, right]) => right - left).slice(0, 4)
+  const peak = Math.max(...stats.recentActivity.map((item) => item.edits), 1)
+  return <div className="feature-view stats-view"><div className="feature-kicker"><Timer size={15} /> CODING STATS</div><strong>{stats.totalEdits.toLocaleString()} edits</strong><span>{stats.activeDays} active days · {stats.charactersChanged.toLocaleString()} characters changed</span><div className="stats-bars">{languages.length ? languages.map(([language, characters]) => <div key={language}><span>{language}</span><b style={{ width: `${Math.max(8, (characters / languages[0][1]) * 100)}%` }}></b><small>{characters.toLocaleString()}</small></div>) : <span>No edits recorded yet.</span>}</div><div className="activity-sparkline">{stats.recentActivity.map((item) => <i key={item.date} title={`${item.date}: ${item.edits} edits`} style={{ height: `${Math.max(8, (item.edits / peak) * 100)}%` }}></i>)}</div></div>
+}
+
+function ThemeShop({ viewerId, setAccent }: { viewerId: string; setAccent: (accent: Accent) => void }) {
+  const [themes, setThemes] = useState<Theme[]>([])
+  const [error, setError] = useState('')
+  const [pending, setPending] = useState('')
+  useEffect(() => { getThemes(viewerId).then(setThemes).catch((requestError) => setError(requestError instanceof Error ? requestError.message : 'Unable to load themes.')) }, [viewerId])
+  const applyTheme = async (theme: Theme) => {
+    if (pending) return
+    setPending(theme.id)
+    try {
+      const installed = await toggleTheme(theme.id, viewerId)
+      setThemes((items) => items.map((item) => item.id === installed.id ? installed : item))
+      setAccent(installed.accent)
+    } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to install theme.') } finally { setPending('') }
+  }
+  return <div className="feature-view theme-view"><div className="feature-kicker"><Sparkles size={15} /> THEME SHOP</div>{error && <div className="copilot-error">{error}</div>}{themes.length ? themes.map((theme) => <div className="theme-card" key={theme.id}><div className={`theme-preview ${theme.accent}-preview`}><span></span><span></span><span></span></div><div><b>{theme.name}</b><small>by @{theme.author} · {theme.likes.toLocaleString()} likes</small><small>{theme.description}</small></div><button disabled={pending === theme.id} aria-label={`${theme.installed ? 'Uninstall' : 'Install'} ${theme.name}`} onClick={() => void applyTheme(theme)}>{pending === theme.id ? <Timer size={14} /> : theme.installed ? <CircleCheck size={14} /> : <Plus size={14} />}</button></div>) : !error && <span>Loading themes...</span>}</div>
+}
+
+function ActivityBar({ activeView, setActiveView, onSettings }: { activeView: string; setActiveView: (view: string) => void; onSettings: () => void }) {
+  const items = [
+    { id: 'explorer', label: 'Explorer', icon: <LayoutGrid size={20} /> },
+    { id: 'search', label: 'Snippets', icon: <Search size={20} /> },
+    { id: 'source', label: 'Source control', icon: <GitBranch size={20} />, badge: '3' },
+    { id: 'run', label: 'Coding stats', icon: <Play size={20} /> },
+    { id: 'extensions', label: 'Extensions', icon: <Braces size={20} /> },
+  ]
+  return <aside className="activity-bar">
+    <div className="brand-mark"><Code2 size={22} /><span>NC</span></div>
+    <nav>{items.map((item) => <button key={item.id} className={activeView === item.id ? 'activity-button active' : 'activity-button'} onClick={() => setActiveView(item.id)} title={item.label}>{item.icon}{item.badge && <b>{item.badge}</b>}</button>)}</nav>
+    <div className="activity-bottom"><button className="activity-button" title="Settings" onClick={onSettings}><Settings2 size={19} /></button><div className="avatar small">M</div></div>
+  </aside>
+}
+
+function FileTree({ activeView, collaboration }: { activeView: string; collaboration: { connected: boolean; participants: number } }) {
+  const { activeFile, openFile, setAccent, files } = useNightcode()
+  const [expanded, setExpanded] = useState(true)
+  const [query, setQuery] = useState('')
+  const [snippetIndex, setSnippetIndex] = useState(0)
+  const [liked, setLiked] = useState(false)
+  const [snippets, setSnippets] = useState<Snippet[]>([])
+  const [snippetError, setSnippetError] = useState('')
+  const [reactionPending, setReactionPending] = useState(false)
+  const [viewerId] = useState(() => {
+    const key = 'nightcode-viewer-id'
+    const existing = window.localStorage.getItem(key)
+    if (existing) return existing
+    const created = crypto.randomUUID()
+    window.localStorage.setItem(key, created)
+    return created
+  })
+  const [installed, setInstalled] = useState(false)
+  const filtered = files.filter((file) => file.name.toLowerCase().includes(query.toLowerCase()))
+  useEffect(() => { getSnippets(viewerId).then(setSnippets).catch((requestError) => setSnippetError(requestError instanceof Error ? requestError.message : 'Unable to load snippets.')) }, [viewerId])
+  useEffect(() => {
+    const listener = (event: MouseEvent) => {
+      const target = event.target as Element
+      const reaction = target.closest('.review-line button') as HTMLButtonElement | null
+      if (reaction) {
+        reaction.parentElement?.querySelectorAll('button').forEach((button) => { if (button !== reaction) button.classList.remove('liked') })
+        reaction.classList.toggle('liked')
+      }
+      const invite = target.closest('.invite-button') as HTMLButtonElement | null
+      if (invite && !invite.dataset.sent) {
+        invite.dataset.sent = 'true'
+        invite.textContent = 'Invite sent'
+      }
+    }
+    window.addEventListener('click', listener)
+    return () => window.removeEventListener('click', listener)
+  }, [])
+  const snippet = snippets[snippetIndex] ?? { id: '', title: snippetError ? 'Snippet feed unavailable' : 'Loading snippets...', author: '', code: '', tag: '', reactionCount: 0, reacted: false }
+  const reactToSnippet = async () => {
+    if (!snippet || reactionPending) return
+    setReactionPending(true)
+    try {
+      const updated = await toggleSnippetReaction(snippet.id, viewerId)
+      setSnippets((items) => items.map((item) => item.id === updated.id ? updated : item))
+      setLiked(updated.reacted)
+    } catch (requestError) { setSnippetError(requestError instanceof Error ? requestError.message : 'Unable to update reaction.') } finally { setReactionPending(false) }
+  }
+  if (activeView === 'extensions') return <aside className="sidebar"><div className="sidebar-title"><span>EXTENSIONS</span><MoreHorizontal size={17} /></div><ThemeShop viewerId={viewerId} setAccent={setAccent} /></aside>
+  if (activeView === 'search') return <aside className="sidebar"><div className="sidebar-title"><span>SEARCH</span><MoreHorizontal size={17} /></div><div className="feature-view snippet-view"><div className="feature-kicker"><Sparkles size={15} /> SNIPPET FEED</div>{snippetError && <div className="copilot-error">{snippetError}</div>}{snippet ? <><strong>{snippet.title}</strong><span className="feature-author">by {snippet.author} · {snippet.tag}</span><code>{snippet.code}</code><div className="feature-actions"><button disabled={reactionPending} className={snippet.reacted ? 'liked' : ''} onClick={() => void reactToSnippet()}>🔥 {snippet.reacted ? 'liked' : 'vibe it'} · {snippet.reactionCount}</button><button disabled={!snippets.length} onClick={() => setSnippetIndex((snippetIndex + 1) % snippets.length)}>next tip <ChevronRight size={13} /></button></div><span className="feed-count">{snippetIndex + 1} / {snippets.length} · persisted reactions</span></> : !snippetError && <span>Loading snippets...</span>}</div></aside>
+  if (activeView === 'run') return <aside className="sidebar"><div className="sidebar-title"><span>CODING STATS</span><MoreHorizontal size={17} /></div><CodingStats /></aside>
+  return <aside className="sidebar">
+    <div className="sidebar-title"><span>{activeView === 'explorer' ? 'EXPLORER' : activeView.toUpperCase()}</span>{activeView === 'source' && <small className={collaboration.connected ? 'collaboration-online' : 'collaboration-offline'}>{collaboration.connected ? `${collaboration.participants} LIVE` : 'OFFLINE'}</small>}<MoreHorizontal size={17} /></div>
+    {activeView === 'explorer' ? <>
+      <div className="file-search"><Search size={13} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter files" /></div>
+      <button className="root-folder" onClick={() => setExpanded(!expanded)}>{expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}<FolderOpen size={15} className="folder-icon" /> nightcode-project</button>
+      {expanded && <div className="file-list">{filtered.map((file) => <button key={file.name} className={activeFile === file.name ? 'file-row active' : 'file-row'} onClick={() => openFile(file.name)}>{iconForFile(file)}<span>{file.name}</span>{file.name === 'App.tsx' && <CircleDot size={10} className="dirty" />}</button>)}</div>}
+      <div className="sidebar-section"><span>OUTLINE</span><ChevronRight size={14} /></div>
+      <div className="outline-empty">Open a file to see its shape.</div>
+    </> : activeView === 'search' ? <div className="feature-view snippet-view"><div className="feature-kicker"><Sparkles size={15} /> SNIPPET FEED</div><strong>{snippet.title}</strong><span className="feature-author">by {snippet.author} · {snippet.tag}</span><code>{snippet.code}</code><div className="feature-actions"><button className={liked ? 'liked' : ''} onClick={() => setLiked(!liked)}>🔥 {liked ? 'liked' : 'vibe it'}</button><button onClick={() => setSnippetIndex((snippetIndex + 1) % snippets.length)}>next tip <ChevronRight size={13} /></button></div><span className="feed-count">{snippetIndex + 1} / {snippets.length} · swipe the feed</span></div> : activeView === 'source' ? <div className="feature-view squad-view"><div className="feature-kicker"><Radio size={15} /> SQUAD LIVE SHARE <span className="live-pill">LIVE</span></div><strong>shipping the weird thing</strong><div className="squad-avatars"><div className="avatar">M</div><div className="avatar avatar-green">J</div><div className="avatar avatar-pink">A</div><span>+ 2 in the room</span></div><div className="review-line"><span>“this API is kind of gorgeous”</span><div><button onClick={() => setLiked(!liked)}>🔥</button><button>💀</button><button>✅</button></div></div><button className="invite-button" onClick={() => setLiked(true)}><Plus size={13} /> Invite your squad</button></div> : activeView === 'extensions' ? <div className="feature-view theme-view"><div className="feature-kicker"><Sparkles size={15} /> THEME SHOP</div><strong>Community heat</strong><span>Install a new mood for your next commit.</span><div className="theme-card"><div className="theme-preview"><span></span><span></span><span></span></div><div><b>after hours</b><small>by @luna.exe · 4.8k likes</small></div><button onClick={() => { setAccent('pink'); setInstalled(true) }}>{installed ? <CircleCheck size={14} /> : <Plus size={14} />}</button></div><div className="theme-card"><div className="theme-preview lime-preview"><span></span><span></span><span></span></div><div><b>matcha terminal</b><small>by @sora · 2.1k likes</small></div><button onClick={() => { setAccent('lime'); setInstalled(true) }}>{installed ? <CircleCheck size={14} /> : <Plus size={14} />}</button></div><span className="feed-count">{installed ? 'theme installed. extremely your color.' : '2,481 themes made by people with taste'}</span></div> : <div className="view-placeholder"><Sparkles size={19} /><strong>{activeView === 'run' ? 'Ready when you are' : 'Make it yours'}</strong><span>This view is wired for your next move.</span><button>{activeView === 'run' ? 'Run project' : 'Explore'}</button></div>}
+  </aside>
+}
+
+function CommandPalette({ onClose, onCommand }: { onClose: () => void; onCommand: (command: string) => void }) {
+  const { openFiles, setActiveFile, files } = useNightcode()
+  const [query, setQuery] = useState('')
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const commands = ['Open file', 'Save file', 'Run file', 'Toggle focus mode', 'Switch accent color', 'Build project', 'Open Coding Wrapped', ...openFiles]
+  const results = commands.filter((item) => item.toLowerCase().includes(query.toLowerCase()))
+  useEffect(() => { setSelectedIndex(0) }, [query])
+  const selectResult = () => { const result = results[selectedIndex]; if (result) onCommand(result); onClose() }
+  return <motion.div className="palette-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={onClose}><motion.div className="command-palette" initial={{ y: -15, scale: .98 }} animate={{ y: 0, scale: 1 }} onMouseDown={(event) => event.stopPropagation()}>
+    <div className="palette-input"><Command size={18} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); setSelectedIndex((index) => results.length ? (index + 1) % results.length : 0) } if (event.key === 'ArrowUp') { event.preventDefault(); setSelectedIndex((index) => results.length ? (index - 1 + results.length) % results.length : 0) } if (event.key === 'Enter') { event.preventDefault(); selectResult() } }} placeholder="Search files, commands, settings..." /><kbd>ESC</kbd></div>
+    <div className="palette-label">QUICK PICKS</div>
+    {results.map((result, index) => <button className={`palette-row ${selectedIndex === index ? 'selected' : ''}`} aria-selected={selectedIndex === index} key={result} onMouseEnter={() => setSelectedIndex(index)} onClick={() => { onCommand(result); onClose() }}><span className="result-icon">{index < 5 ? <Zap size={15} /> : iconForFile(files.find((file) => file.name === result) ?? files[0])}</span><span>{result}</span>{index < 5 && <kbd>{index + 1}</kbd>}</button>)}
+    {!results.length && <div className="no-results">No matches. The void remains undefeated.</div>}
+    <div className="palette-footer"><span><kbd>↑↓</kbd> navigate</span><span><kbd>↵</kbd> select</span><span><kbd>esc</kbd> close</span></div>
+  </motion.div></motion.div>
+}
+
+function CopilotPanel({ onClose, file }: { onClose: () => void; file: FileItem }) {
+  const [tone, setTone] = useState(45)
+  const [prompt, setPrompt] = useState('')
+  const [messages, setMessages] = useState<CopilotMessage[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const vibe = tone < 35 ? 'professional' : tone > 70 ? 'unhinged' : 'friendly'
+  const send = async () => {
+    const content = prompt.trim()
+    if (!content || loading) return
+    const nextMessages = [...messages, { role: 'user' as const, content }]
+    setMessages(nextMessages)
+    setPrompt('')
+    setError('')
+    setLoading(true)
+    try {
+      const answer = await sendCopilotMessage({ messages: nextMessages, tone: vibe, file })
+      setMessages([...nextMessages, { role: 'assistant', content: answer }])
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Copilot request failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+  return <motion.aside className="copilot-panel" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 20, opacity: 0 }}><div className="panel-heading"><div><Sparkles size={17} /><strong>copilot / <span>sidekick</span></strong></div><button onClick={onClose}><X size={16} /></button></div><div className="copilot-chat"><div className="copilot-message"><div className="ai-orb"><Sparkles size={14} /></div><p>Hey. I’m looking at <span>{file.name}</span>. What are we making less painful today?</p></div>{messages.map((message, index) => message.role === 'user' ? <div className="user-message" key={`${message.role}-${index}`}>{message.content}</div> : <div className="copilot-message" key={`${message.role}-${index}`}><div className="ai-orb"><Sparkles size={14} /></div><p>{message.content}</p></div>)}{loading && <div className="copilot-message"><div className="ai-orb"><Sparkles size={14} /></div><p>Thinking...</p></div>}{error && <div className="copilot-error">{error}</div>}</div><div className="tone-wrap"><div><span>RESPONSE VIBE</span><b>{vibe}</b></div><input type="range" min="0" max="100" value={tone} onChange={(event) => setTone(Number(event.target.value))} /></div><div className="copilot-input"><input value={prompt} disabled={loading} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void send() }} placeholder="Ask anything..." /><button disabled={loading || !prompt.trim()} onClick={() => void send()}><Sparkles size={16} /></button></div><div className="copilot-hint">Copilot can make mistakes. You make the final call.</div></motion.aside>
+}
+
+function FocusPanel({ onClose }: { onClose: () => void }) {
+  const [seconds, setSeconds] = useState(24 * 60 + 38)
+  const [paused, setPaused] = useState(false)
+  const [copied, setCopied] = useState(false)
+  useEffect(() => { if (paused) return undefined; const timer = window.setInterval(() => setSeconds((value) => value > 0 ? value - 1 : 25 * 60), 1000); return () => window.clearInterval(timer) }, [paused])
+  const minutes = String(Math.floor(seconds / 60)).padStart(2, '0'); const remaining = String(seconds % 60).padStart(2, '0')
+  return <motion.div className="focus-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><div className="focus-card"><button className="close-focus" onClick={onClose}><X size={18} /></button><div className="focus-eyebrow"><Timer size={16} /> DEEP WORK // 01</div><div className="focus-time">{minutes}:{remaining}</div><p>one thing at a time.</p><div className="sound-row"><div className="album-art"><Radio size={19} /></div><div><b>late night loops</b><span>ambient for shipping</span></div><button aria-label="Copy focus soundtrack" onClick={() => { void navigator.clipboard?.writeText('late night loops'); setCopied(true) }}><Copy size={15} /></button></div><div className="focus-controls"><button aria-label="Subtract five minutes" onClick={() => setSeconds((value) => Math.max(0, value - 300))}>−</button><button aria-label={paused ? 'Resume focus timer' : 'Pause focus timer'} className="pause" onClick={() => setPaused(!paused)}><span></span></button><button aria-label="Add five minutes" onClick={() => setSeconds((value) => value + 300)}>+</button></div>{copied && <span className="focus-copied">copied</span>}<div className="focus-progress"><span></span></div></div></motion.div>
+}
+
+function Wrapped({ onClose }: { onClose: () => void }) {
+  const [stats, setStats] = useState<CodingStats | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => { getCodingStats().then(setStats).catch((requestError) => setError(requestError instanceof Error ? requestError.message : 'Unable to load your coding story.')) }, [])
+  const languageEntries = stats ? Object.entries(stats.byLanguage).sort(([, left], [, right]) => right - left).slice(0, 4) : []
+  const topLanguage = languageEntries[0]?.[0] ?? 'your editor'
+  const topCharacters = languageEntries[0]?.[1] ?? 0
+  const streak = stats?.recentActivity.reduce((count, item, index, activity) => index === 0 || new Date(`${item.date}T00:00:00`).getTime() - new Date(`${activity[index - 1].date}T00:00:00`).getTime() === 86400000 ? count + 1 : 1, 0) ?? 0
+  return <motion.div className="wrapped-modal" initial={{ opacity: 0, scale: .96 }} animate={{ opacity: 1, scale: 1 }}><button onClick={onClose} className="wrapped-close"><X size={18} /></button><div className="wrapped-kicker">NIGHTCODE / YOUR DATA</div>{error ? <><h2>Your story is <em>waiting.</em></h2><div className="copilot-error">{error}</div></> : !stats ? <><h2>Reading your <em>lore...</em></h2><p className="wrapped-footer">collecting recorded editor activity.</p></> : <><h2>Your code has <em>lore.</em></h2><div className="wrapped-stat"><strong>{streak}</strong><span>day activity run<br /><small>{stats.activeDays} active days recorded</small></span></div><div className="wrapped-summary"><b>{stats.totalEdits.toLocaleString()}</b><span>saved edits</span><b>{stats.charactersChanged.toLocaleString()}</b><span>characters changed</span></div><div className="language-bars">{languageEntries.length ? languageEntries.map(([language, characters]) => <div key={language}><span>{language}</span><b style={{ width: `${Math.max(8, (characters / topCharacters) * 100)}%` }}></b><small>{Math.round((characters / stats.charactersChanged) * 100) || 0}%</small></div>) : <span>No saved edits yet.</span>}</div><p className="wrapped-footer">your signature language is {topLanguage}.</p></>}</motion.div>
+}
+
+function SettingsPanel({ onClose, autosave, minimap, setAutosave, setMinimap }: { onClose: () => void; autosave: boolean; minimap: boolean; setAutosave: (enabled: boolean) => void; setMinimap: (enabled: boolean) => void }) {
+  return <motion.div className="settings-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><section className="settings-panel"><div className="panel-heading"><strong>workspace settings</strong><button aria-label="Close settings" onClick={onClose}><X size={16} /></button></div><label><span>Autosave changes</span><input type="checkbox" checked={autosave} onChange={(event) => setAutosave(event.target.checked)} /></label><label><span>Editor minimap</span><input type="checkbox" checked={minimap} onChange={(event) => setMinimap(event.target.checked)} /></label><button className="settings-done" onClick={onClose}>Done</button></section></motion.div>
+}
+
+function NewFilePanel({ onClose, onCreate }: { onClose: () => void; onCreate: (extension: string) => void }) {
+  return <motion.div className="settings-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><section className="settings-panel new-file-panel"><div className="panel-heading"><strong>new file</strong><button aria-label="Close new file" onClick={onClose}><X size={16} /></button></div><div className="language-options">{supportedLanguages.map((item) => <button key={item.extension} onClick={() => onCreate(item.extension)}>{item.label}<small>.{item.extension}</small></button>)}</div></section></motion.div>
+}
+
+function BottomPanel() { const [tab, setTab] = useState('Terminal'); const [collapsed, setCollapsed] = useState(false); const [expanded, setExpanded] = useState(false); return <section className={`bottom-panel ${collapsed ? 'collapsed' : ''} ${expanded ? 'expanded' : ''}`}><div className="bottom-tabs">{['Terminal', 'Problems', 'Output'].map((item) => <button key={item} className={tab === item ? 'active' : ''} onClick={() => { setTab(item); setCollapsed(false) }}>{item}{item === 'Problems' && <span className="problem-badge">2</span>}</button>)}<div className="bottom-actions"><button aria-label={collapsed ? 'Expand panel' : 'Collapse panel'} title={collapsed ? 'Expand panel' : 'Collapse panel'} onClick={() => setCollapsed(!collapsed)}><PanelBottom size={15} /></button><button aria-label={expanded ? 'Restore panel' : 'Maximize panel'} title={expanded ? 'Restore panel' : 'Maximize panel'} onClick={() => { setExpanded(!expanded); setCollapsed(false) }}><Maximize2 size={14} /></button></div></div>{!collapsed && (tab === 'Terminal' ? <div className="terminal"><div><span className="prompt">➜</span> <span className="path">~/nightcode-project</span> <span className="branch">git:(main)</span></div><div className="terminal-line">npm run dev</div><div className="terminal-success"><CircleCheck size={14} /> ready in 412ms · <span>http://localhost:5173</span></div><div><span className="prompt">➜</span><span className="cursor-block"></span></div></div> : <div className="panel-message">{tab === 'Problems' ? <><CircleAlert size={17} /><span>2 warnings in this workspace. Nothing blocking your flow.</span></> : <><CircleCheck size={17} /><span>Build succeeded 14 seconds ago.</span></>}</div>)}</section> }
+
+function App() {
+  const { activeFile, openFiles, files, accent, sidebarOpen, setFiles, updateFile, setActiveFile, closeFile, setAccent, toggleSidebar } = useNightcode()
+  const [activeView, setActiveView] = useState('explorer'); const [paletteOpen, setPaletteOpen] = useState(false); const [copilotOpen, setCopilotOpen] = useState(false); const [focusOpen, setFocusOpen] = useState(false); const [wrappedOpen, setWrappedOpen] = useState(false); const [settingsOpen, setSettingsOpen] = useState(false); const [newFileOpen, setNewFileOpen] = useState(false); const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle'); const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle'); const [runOutput, setRunOutput] = useState(''); const [buildStatus, setBuildStatus] = useState<'idle' | 'building' | 'success' | 'error'>('idle')
+    const [autosave, setAutosave] = useState(true); const [minimap, setMinimap] = useState(true);
+  const [collaboration, setCollaboration] = useState({ connected: false, participants: 0 })
+  const collaborationSocket = useRef<WebSocket | null>(null)
+  const currentFile = files.find((file) => file.name === activeFile) ?? files[0]
+  const applyingRemoteChange = useRef(false)
+     const accentOptions: Accent[] = ['violet', 'lime', 'pink', 'cyan']
+  const buildProject = async () => {
+    if (buildStatus === 'building') return
+    setBuildStatus('building')
+    try {
+      const response = await fetch('/api/build', { method: 'POST' })
+      if (!response.ok) throw new Error('Build failed.')
+      setBuildStatus('success')
+    } catch {
+      setBuildStatus('error')
+    }
+  }
+  const saveCurrentFile = async () => {
+    if (!currentFile) return
+    setSaveStatus('saving')
+    try {
+      const response = await fetch(`/api/file?path=${encodeURIComponent(currentFile.path)}`, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: currentFile.content })
+      if (!response.ok) throw new Error('Save failed.')
+      setSaveStatus('saved')
+      window.setTimeout(() => setSaveStatus('idle'), 1800)
+    } catch {
+      setSaveStatus('error')
+    }
+  }
+  const runCurrentFile = async () => {
+    if (!currentFile || runStatus === 'running') return
+    setRunStatus('running')
+    setRunOutput('')
+    try {
+      const response = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language: currentFile.language, content: currentFile.content }) })
+      const result = await response.json() as { ok?: boolean; output?: string; error?: string }
+      if (!response.ok) throw new Error(result.error || 'Unable to run file.')
+      setRunOutput(result.output || '(no output)')
+      setRunStatus(result.ok === false ? 'error' : 'done')
+    } catch (error) {
+      setRunOutput(error instanceof Error ? error.message : 'Unable to run file.')
+      setRunStatus('error')
+    }
+  }
+  const runCommand = (command: string) => {
+    if (openFiles.includes(command)) { setActiveFile(command); return }
+    if (command === 'Open file') { setActiveView('explorer'); if (!sidebarOpen) toggleSidebar() }
+    if (command === 'Save file') void saveCurrentFile()
+    if (command === 'Run file') void runCurrentFile()
+    if (command === 'Toggle focus mode') setFocusOpen(true)
+    if (command === 'Switch accent color') setAccent(accentOptions[(accentOptions.indexOf(accent) + 1) % accentOptions.length])
+    if (command === 'Build project') void buildProject()
+    if (command === 'Open Coding Wrapped') setWrappedOpen(true)
+  }
+  const openFileItems = useMemo(() => openFiles.map((name) => files.find((file) => file.name === name)!).filter(Boolean), [openFiles])
+  useEffect(() => {
+    fetch('/api/files').then((response) => response.json()).then((projectFiles: FileItem[]) => setFiles(projectFiles)).catch(() => undefined)
+  }, [setFiles])
+  useEffect(() => {
+    let socket: WebSocket | null = null
+    let reconnectTimer: number | undefined
+    let stopped = false
+    const connect = () => {
+      if (stopped) return
+      socket = new WebSocket(collaborationUrl())
+      collaborationSocket.current = socket
+      socket.addEventListener('open', () => {
+        setCollaboration((state) => ({ ...state, connected: true }))
+        socket?.send(JSON.stringify({ type: 'join', name: 'M' }))
+      })
+      socket.addEventListener('message', (event) => {
+        try {
+          const message = JSON.parse(event.data) as CollaborationMessage
+          if (message.type === 'presence') setCollaboration({ connected: true, participants: message.participants })
+          if (message.type === 'file-change') {
+            const file = useNightcode.getState().files.find((item) => item.path === message.path)
+            if (file) {
+              applyingRemoteChange.current = true
+              updateFile(file.name, message.content)
+            }
+          }
+        } catch {
+          setCollaboration({ connected: false, participants: 0 })
+        }
+      })
+      socket.addEventListener('close', () => {
+        setCollaboration({ connected: false, participants: 0 })
+        if (!stopped && reconnectTimer === undefined) reconnectTimer = window.setTimeout(() => { reconnectTimer = undefined; connect() }, 1500)
+      })
+      socket.addEventListener('error', () => setCollaboration({ connected: false, participants: 0 }))
+    }
+    connect()
+    return () => { stopped = true; if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer); socket?.close(); collaborationSocket.current = null }
+  }, [])
+  useEffect(() => useNightcode.subscribe((state, previousState) => {
+    if (applyingRemoteChange.current) {
+      applyingRemoteChange.current = false
+      return
+    }
+    const changedFile = state.files.find((file) => file.content !== previousState.files.find((previous) => previous.path === file.path)?.content)
+    if (changedFile && collaborationSocket.current?.readyState === WebSocket.OPEN) collaborationSocket.current.send(JSON.stringify({ type: 'file-change', path: changedFile.path, content: changedFile.content }))
+  }), [])
+  useEffect(() => { const listener = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPaletteOpen(true) } if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void saveCurrentFile() } if (event.key === 'Escape') { setPaletteOpen(false); setFocusOpen(false) } }; window.addEventListener('keydown', listener); return () => window.removeEventListener('keydown', listener) }, [currentFile])
+  useEffect(() => {
+    const listener = (event: MouseEvent) => {
+      const target = event.target as Element
+      if (target.closest('.new-tab')) {
+        setNewFileOpen(true)
+      }
+      if (target.closest('.editor-tools button[title="More actions"]')) setPaletteOpen(true)
+      if (target.closest('.editor-tools button[title="Split editor"]')) {
+        const otherFile = openFiles.find((name) => name !== activeFile)
+        if (otherFile) setActiveFile(otherFile)
+      }
+    }
+    window.addEventListener('click', listener)
+    return () => window.removeEventListener('click', listener)
+  }, [activeFile, files, openFiles, setActiveFile, setFiles])
+  return <div className={`app accent-${accent} ${focusOpen ? 'focus-active' : ''}`}>
+    <ActivityBar activeView={activeView} setActiveView={(view) => { setActiveView(view); if (view !== 'explorer' && !sidebarOpen) toggleSidebar() }} onSettings={() => setSettingsOpen(true)} />
+    {sidebarOpen && <FileTree activeView={activeView} collaboration={collaboration} />}
+    <main className="workspace">
+      <header className="topbar"><div className="workspace-name"><span className="status-dot"></span><b>nightcode</b><span className="slash">/</span><span>nightcode-project</span></div><div className="top-actions"><button className="streak-button" onClick={() => setWrappedOpen(true)}><span>🔥</span> 18 day streak</button><button className="icon-text" onClick={() => setFocusOpen(true)}><Timer size={15} /> Focus</button><button className="icon-text copilot-trigger" onClick={() => setCopilotOpen(true)}><Sparkles size={15} /> Copilot</button><div className="avatar">M</div></div></header>
+      <div className="editor-wrap"><div className="tabs-bar"><button className="sidebar-toggle" onClick={toggleSidebar}><PanelBottom size={16} /></button>{openFileItems.map((file) => <div className={activeFile === file.name ? 'editor-tab active' : 'editor-tab'} key={file.name} onClick={() => setActiveFile(file.name)}>{iconForFile(file)}<span>{file.name}</span>{activeFile === file.name && <CircleDot size={9} className="tab-dirty" />}<button className="tab-close" onClick={(event) => { event.stopPropagation(); closeFile(file.name) }}><X size={13} /></button></div>)}<button className="new-tab"><Plus size={16} /></button><div className="editor-tools"><button title="Split editor"><PanelBottom size={15} /></button><button title="More actions"><MoreHorizontal size={16} /></button></div></div><div className="breadcrumbs"><span>src</span><ChevronRight size={12} /><span className="breadcrumb-current">{currentFile.name}</span><ChevronRight size={12} /><span>{currentFile.name === 'App.tsx' ? 'App' : 'default'}</span><div className="language-label">{currentFile.language} <ChevronDown size={12} /></div></div><div className="editor-stage"><Editor height="100%" theme="nightcode" language={currentFile.language} value={currentFile.content} onChange={(value) => { if (value === undefined) return; updateFile(currentFile.name, value); if (autosave) void fetch(`/api/file?path=${encodeURIComponent(currentFile.path)}`, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: value }) }} options={{ minimap: { enabled: minimap }, fontFamily: 'JetBrains Mono, monospace', fontSize: 14, lineHeight: 24, padding: { top: 14 }, smoothScrolling: true, roundedSelection: true, scrollBeyondLastLine: false, automaticLayout: true }} beforeMount={(monaco) => { monaco.editor.defineTheme('nightcode', { base: 'vs-dark', inherit: true, rules: [{ token: 'keyword', foreground: 'C995FF' }, { token: 'string', foreground: 'B8E986' }, { token: 'comment', foreground: '686477', fontStyle: 'italic' }, { token: 'type', foreground: '64D7FF' }], colors: { 'editor.background': '#111116', 'editor.foreground': '#DCD9E5', 'editorLineNumber.foreground': '#45434E', 'editorLineNumber.activeForeground': '#A6A0B5', 'editorCursor.foreground': '#BF8CFF', 'editor.selectionBackground': '#42315d', 'editor.lineHighlightBackground': '#17161e', 'editorIndentGuide.background': '#24222d', 'minimap.background': '#111116' } }) }} /></div><BottomPanel /></div>
+      <footer className="statusbar"><div><span><GitBranch size={13} /> main</span><span><GitCommitHorizontal size={13} /> 3 changes</span><span className="sync"><CircleCheck size={13} /> synced</span></div><div><span><CircleAlert size={13} /> 2</span><span><CircleCheck size={13} /> 0</span><span>Ln 7, Col 31</span><span>Spaces: 2</span><span>UTF-8</span><span>{currentFile.language}</span></div></footer>
+    </main>
+    <div className="accent-picker">{accentOptions.map((option) => <button key={option} aria-label={`Use ${option} accent`} className={`swatch ${option} ${accent === option ? 'selected' : ''}`} onClick={() => setAccent(option)} />)}</div>
+    {saveStatus !== 'idle' && <div className={`save-status ${saveStatus}`}>{saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : 'Save failed'}</div>}{runOutput && <div className={`run-output ${runStatus}`}>{runOutput}</div>}<button className="run-button" disabled={runStatus === 'running'} onClick={() => void runCurrentFile()}><Play size={16} />{runStatus === 'running' ? 'Running...' : 'Run'}</button><button className={`build-button ${buildStatus === 'error' ? 'build-error' : ''}`} disabled={buildStatus === 'building'} onClick={() => void buildProject()}>{buildStatus === 'building' ? <Timer size={17} /> : buildStatus === 'success' ? <CircleCheck size={17} /> : <Play size={16} />}{buildStatus === 'building' ? 'Building...' : buildStatus === 'success' ? 'Built beautifully' : buildStatus === 'error' ? 'Build failed' : 'Build'}</button>
+    <AnimatePresence>{paletteOpen && <CommandPalette key="palette" onClose={() => setPaletteOpen(false)} onCommand={runCommand} />}{copilotOpen && currentFile && <CopilotPanel key="copilot" file={currentFile} onClose={() => setCopilotOpen(false)} />}{focusOpen && <FocusPanel key="focus" onClose={() => setFocusOpen(false)} />}{wrappedOpen && <Wrapped key="wrapped" onClose={() => setWrappedOpen(false)} />}{settingsOpen && <SettingsPanel key="settings" autosave={autosave} minimap={minimap} setAutosave={setAutosave} setMinimap={setMinimap} onClose={() => setSettingsOpen(false)} />}{newFileOpen && <NewFilePanel key="new-file" onClose={() => setNewFileOpen(false)} onCreate={(extension) => { const number = files.filter((file) => file.name.startsWith('Untitled')).length + 1; const name = `Untitled-${number}.${extension}`; void fetch('/api/files', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, content: '' }) }).then(async (response) => { if (!response.ok) throw new Error('Unable to create file.'); const file = await response.json() as FileItem; setFiles([...useNightcode.getState().files, file]); useNightcode.getState().openFile(file.name); setNewFileOpen(false) }).catch(() => undefined) }} />}</AnimatePresence>
+  </div>
+}
+
+export default App

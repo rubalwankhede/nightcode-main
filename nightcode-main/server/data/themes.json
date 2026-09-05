@@ -1,0 +1,46 @@
+[
+  {
+    "id": "after-hours",
+    "name": "after hours",
+    "author": "luna.exe",
+    "description": "Violet light for late-night shipping.",
+    "accent": "violet",
+    "likes": 4800,
+    "installers": [
+      "2237c6d5-6257-494e-9e7e-f1c3c9416f82"
+    ]
+  },
+  {
+    "id": "limewire",
+    "name": "limewire",
+    "author": "juno.builds",
+    "description": "A bright green signal through the dark.",
+    "accent": "lime",
+    "likes": 3200,
+    "installers": [
+      "2237c6d5-6257-494e-9e7e-f1c3c9416f82"
+    ]
+  },
+  {
+    "id": "pink-noise",
+    "name": "pink noise",
+    "author": "aya.codes",
+    "description": "Warm pink contrast for sharp ideas.",
+    "accent": "pink",
+    "likes": 2700,
+    "installers": [
+      "2237c6d5-6257-494e-9e7e-f1c3c9416f82"
+    ]
+  },
+  {
+    "id": "terminal-sky",
+    "name": "terminal sky",
+    "author": "kai.dev",
+    "description": "Cool cyan focus for long sessions.",
+    "accent": "cyan",
+    "likes": 1900,
+    "installers": [
+      "2237c6d5-6257-494e-9e7e-f1c3c9416f82"
+    ]
+  }
+]

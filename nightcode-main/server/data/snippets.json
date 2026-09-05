@@ -1,0 +1,26 @@
+[
+  {
+    "id": "tiny-fetch-wrapper",
+    "title": "The tiny fetch wrapper",
+    "author": "maya.codes",
+    "code": "const get = <T>(url: string) => fetch(url).then(r => r.json() as T)",
+    "tag": "typescript",
+    "reactors": []
+  },
+  {
+    "id": "css-that-breathes",
+    "title": "CSS that breathes",
+    "author": "santi.builds",
+    "code": "transition: color 180ms ease, transform 180ms ease;",
+    "tag": "css",
+    "reactors": []
+  },
+  {
+    "id": "better-console-log",
+    "title": "A better console.log",
+    "author": "noah.exe",
+    "code": "console.table(Object.entries(state))",
+    "tag": "debugging",
+    "reactors": []
+  }
+]
