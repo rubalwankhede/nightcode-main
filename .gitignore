@@ -1,3 +1,13 @@
-﻿node_modules/
+﻿# Dependencies and build output
+node_modules/
 dist/
+.tsbuild/
+*.tsbuildinfo
+
+# Local environment and editor files
 .env
+.env.*
+!.env.example
+.DS_Store
+*.log
+.vscode/

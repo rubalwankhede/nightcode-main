@@ -7,7 +7,8 @@
     "accent": "violet",
     "likes": 4800,
     "installers": [
-      "2237c6d5-6257-494e-9e7e-f1c3c9416f82"
+      "2237c6d5-6257-494e-9e7e-f1c3c9416f82",
+      "41ca28e1-4700-43b9-9976-b4d49dbd04bc"
     ]
   },
   {
@@ -29,7 +30,8 @@
     "accent": "pink",
     "likes": 2700,
     "installers": [
-      "2237c6d5-6257-494e-9e7e-f1c3c9416f82"
+      "2237c6d5-6257-494e-9e7e-f1c3c9416f82",
+      "41ca28e1-4700-43b9-9976-b4d49dbd04bc"
     ]
   },
   {
@@ -40,7 +42,8 @@
     "accent": "cyan",
     "likes": 1900,
     "installers": [
-      "2237c6d5-6257-494e-9e7e-f1c3c9416f82"
+      "2237c6d5-6257-494e-9e7e-f1c3c9416f82",
+      "41ca28e1-4700-43b9-9976-b4d49dbd04bc"
     ]
   }
 ]

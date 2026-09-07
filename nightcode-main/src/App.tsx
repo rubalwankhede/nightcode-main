@@ -11,11 +11,14 @@ import {
   Braces, ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircleDot, Code2,
   Command, Copy, FileCode2, FileJson, FileText, FolderOpen,
   GitBranch, GitCommitHorizontal, LayoutGrid, Maximize2,
-  MoreHorizontal, PanelBottom, Play, Plus, Radio, Search, Settings2,
-  Sparkles, Timer, X, Zap
+  CloudLightning, MoreHorizontal, PanelBottom, Play, Plus, Radio, Search, Settings2,
+  Sparkles, Timer, Wind, X, Zap
 } from 'lucide-react'
 
 type Accent = 'violet' | 'lime' | 'pink' | 'cyan'
+type AmbientTheme = 'classic' | 'sakura' | 'storm'
+type AmbientSound = 'theme' | 'lofi' | 'off'
+type GitStatus = { branch: string; clean: boolean; changes: Array<{ index: string; worktree: string; path: string }> }
 type FileItem = { name: string; path: string; language: string; icon: 'code' | 'json' | 'text'; content: string }
 const supportedLanguages = [{ label: 'TypeScript React', extension: 'tsx', language: 'typescript' }, { label: 'JavaScript', extension: 'js', language: 'javascript' }, { label: 'Python', extension: 'py', language: 'python' }, { label: 'C', extension: 'c', language: 'c' }, { label: 'C++', extension: 'cpp', language: 'cpp' }, { label: 'Java', extension: 'java', language: 'java' }, { label: 'C#', extension: 'cs', language: 'csharp' }, { label: 'Go', extension: 'go', language: 'go' }, { label: 'Rust', extension: 'rs', language: 'rust' }, { label: 'PHP', extension: 'php', language: 'php' }, { label: 'Ruby', extension: 'rb', language: 'ruby' }, { label: 'HTML', extension: 'html', language: 'html' }, { label: 'CSS', extension: 'css', language: 'css' }, { label: 'JSON', extension: 'json', language: 'json' }] as const
 
@@ -91,18 +94,18 @@ function ActivityBar({ activeView, setActiveView, onSettings }: { activeView: st
   const items = [
     { id: 'explorer', label: 'Explorer', icon: <LayoutGrid size={20} /> },
     { id: 'search', label: 'Snippets', icon: <Search size={20} /> },
-    { id: 'source', label: 'Source control', icon: <GitBranch size={20} />, badge: '3' },
+    { id: 'source', label: 'Source control', icon: <GitBranch size={20} /> },
     { id: 'run', label: 'Coding stats', icon: <Play size={20} /> },
     { id: 'extensions', label: 'Extensions', icon: <Braces size={20} /> },
   ]
   return <aside className="activity-bar">
     <div className="brand-mark"><Code2 size={22} /><span>NC</span></div>
-    <nav>{items.map((item) => <button key={item.id} className={activeView === item.id ? 'activity-button active' : 'activity-button'} onClick={() => setActiveView(item.id)} title={item.label}>{item.icon}{item.badge && <b>{item.badge}</b>}</button>)}</nav>
+    <nav>{items.map((item) => <button key={item.id} className={activeView === item.id ? 'activity-button active' : 'activity-button'} onClick={() => setActiveView(item.id)} title={item.label}>{item.icon}</button>)}</nav>
     <div className="activity-bottom"><button className="activity-button" title="Settings" onClick={onSettings}><Settings2 size={19} /></button><div className="avatar small">M</div></div>
   </aside>
 }
 
-function FileTree({ activeView, collaboration }: { activeView: string; collaboration: { connected: boolean; participants: number } }) {
+function FileTree({ activeView, collaboration }: { activeView: string; collaboration: { connected: boolean; participants: number; names: string[] } }) {
   const { activeFile, openFile, setAccent, files } = useNightcode()
   const [expanded, setExpanded] = useState(true)
   const [query, setQuery] = useState('')
@@ -228,8 +231,75 @@ function Wrapped({ onClose }: { onClose: () => void }) {
   return <motion.div className="wrapped-modal" initial={{ opacity: 0, scale: .96 }} animate={{ opacity: 1, scale: 1 }}><button onClick={onClose} className="wrapped-close"><X size={18} /></button><div className="wrapped-kicker">NIGHTCODE / YOUR DATA</div>{error ? <><h2>Your story is <em>waiting.</em></h2><div className="copilot-error">{error}</div></> : !stats ? <><h2>Reading your <em>lore...</em></h2><p className="wrapped-footer">collecting recorded editor activity.</p></> : <><h2>Your code has <em>lore.</em></h2><div className="wrapped-stat"><strong>{streak}</strong><span>day activity run<br /><small>{stats.activeDays} active days recorded</small></span></div><div className="wrapped-summary"><b>{stats.totalEdits.toLocaleString()}</b><span>saved edits</span><b>{stats.charactersChanged.toLocaleString()}</b><span>characters changed</span></div><div className="language-bars">{languageEntries.length ? languageEntries.map(([language, characters]) => <div key={language}><span>{language}</span><b style={{ width: `${Math.max(8, (characters / topCharacters) * 100)}%` }}></b><small>{Math.round((characters / stats.charactersChanged) * 100) || 0}%</small></div>) : <span>No saved edits yet.</span>}</div><p className="wrapped-footer">your signature language is {topLanguage}.</p></>}</motion.div>
 }
 
-function SettingsPanel({ onClose, autosave, minimap, setAutosave, setMinimap }: { onClose: () => void; autosave: boolean; minimap: boolean; setAutosave: (enabled: boolean) => void; setMinimap: (enabled: boolean) => void }) {
-  return <motion.div className="settings-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><section className="settings-panel"><div className="panel-heading"><strong>workspace settings</strong><button aria-label="Close settings" onClick={onClose}><X size={16} /></button></div><label><span>Autosave changes</span><input type="checkbox" checked={autosave} onChange={(event) => setAutosave(event.target.checked)} /></label><label><span>Editor minimap</span><input type="checkbox" checked={minimap} onChange={(event) => setMinimap(event.target.checked)} /></label><button className="settings-done" onClick={onClose}>Done</button></section></motion.div>
+function createAmbientSound(theme: AmbientTheme, sound: AmbientSound) {
+  if (sound === 'off') return () => undefined
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext
+  if (!AudioContextClass) return () => undefined
+  const context = new AudioContextClass()
+  const output = context.createGain()
+  output.gain.value = sound === 'lofi' ? 0.12 : 0.16
+  output.connect(context.destination)
+  const noiseBuffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate)
+  const noiseData = noiseBuffer.getChannelData(0)
+  for (let index = 0; index < noiseData.length; index += 1) noiseData[index] = Math.random() * 2 - 1
+  const noise = context.createBufferSource()
+  noise.buffer = noiseBuffer
+  noise.loop = true
+  const noiseFilter = context.createBiquadFilter()
+  noiseFilter.type = theme === 'storm' ? 'bandpass' : 'lowpass'
+  noiseFilter.frequency.value = theme === 'storm' ? 2300 : 700
+  noiseFilter.Q.value = theme === 'storm' ? 0.45 : 0.7
+  const noiseGain = context.createGain()
+  noiseGain.gain.value = theme === 'storm' ? 0.32 : 0.08
+  noise.connect(noiseFilter).connect(noiseGain).connect(output)
+  noise.start()
+  const filter = context.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = theme === 'storm' ? 900 : 520
+  filter.connect(output)
+  const oscillator = context.createOscillator()
+  oscillator.type = theme === 'storm' ? 'sine' : 'triangle'
+  oscillator.frequency.value = theme === 'storm' ? 48 : 112
+  const oscillatorGain = context.createGain()
+  oscillatorGain.gain.value = theme === 'storm' ? 0.12 : 0.045
+  oscillator.connect(filter).connect(oscillatorGain).connect(output)
+  oscillator.start()
+  const timer = window.setInterval(() => {
+    const pulse = context.createOscillator()
+    const gain = context.createGain()
+    pulse.type = theme === 'storm' ? 'sawtooth' : 'sine'
+    pulse.frequency.value = theme === 'storm' ? 35 + Math.random() * 20 : 520 + Math.random() * 220
+    gain.gain.setValueAtTime(0.001, context.currentTime)
+    gain.gain.exponentialRampToValueAtTime(theme === 'storm' ? 0.16 : 0.09, context.currentTime + 0.2)
+    gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + (theme === 'storm' ? 1.8 : 0.8))
+    pulse.connect(gain).connect(output)
+    pulse.start()
+    pulse.stop(context.currentTime + (theme === 'storm' ? 1.8 : 0.8))
+  }, theme === 'storm' ? 4200 : 2600)
+  const musicTimer = window.setInterval(() => {
+    const notes = theme === 'storm' ? [55, 73.42] : sound === 'lofi' ? [196, 246.94, 293.66] : [261.63, 329.63, 392]
+    const note = context.createOscillator()
+    const noteGain = context.createGain()
+    note.type = theme === 'storm' ? 'sine' : 'triangle'
+    note.frequency.value = notes[Math.floor(Math.random() * notes.length)]
+    noteGain.gain.setValueAtTime(0.001, context.currentTime)
+    noteGain.gain.exponentialRampToValueAtTime(theme === 'storm' ? 0.06 : 0.045, context.currentTime + 0.35)
+    noteGain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + (theme === 'storm' ? 3.5 : 2.2))
+    note.connect(noteGain).connect(output)
+    note.start()
+    note.stop(context.currentTime + (theme === 'storm' ? 3.5 : 2.2))
+  }, theme === 'storm' ? 9000 : sound === 'lofi' ? 3500 : 5000)
+  void context.resume()
+  return () => { window.clearInterval(timer); window.clearInterval(musicTimer); noise.stop(); oscillator.stop(); void context.close() }
+}
+
+declare global { interface Window { webkitAudioContext?: typeof AudioContext } }
+
+function SettingsPanel({ onClose, autosave, minimap, setAutosave, setMinimap, accent, setAccent, ambientTheme, setAmbientTheme, ambientSound, setAmbientSound }: { onClose: () => void; autosave: boolean; minimap: boolean; setAutosave: (enabled: boolean) => void; setMinimap: (enabled: boolean) => void; accent: Accent; setAccent: (accent: Accent) => void; ambientTheme: AmbientTheme; setAmbientTheme: (theme: AmbientTheme) => void; ambientSound: AmbientSound; setAmbientSound: (sound: AmbientSound) => void }) {
+  const themes = [{ id: 'sakura' as const, name: 'Sakura Bloom', detail: 'Petals + gentle wind', icon: <Wind size={20} /> }, { id: 'storm' as const, name: 'Midnight Storm', detail: 'Lightning + heavy rain', icon: <CloudLightning size={20} /> }]
+  const selectTheme = (theme: AmbientTheme) => { setAmbientTheme(theme); if (theme === 'classic') setAmbientSound('off'); else if (ambientSound === 'off') setAmbientSound('theme') }
+  const accents: { id: Accent; name: string }[] = [{ id: 'violet', name: 'Violet' }, { id: 'lime', name: 'Lime' }, { id: 'pink', name: 'Pink' }, { id: 'cyan', name: 'Cyan' }]
+  return <motion.div className="settings-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><section className="settings-panel appearance-panel"><div className="panel-heading"><div><strong>Appearance</strong><span>Choose a theme, accent, and ambient sound</span></div><button aria-label="Close settings" onClick={onClose}><X size={16} /></button></div><div className="appearance-themes">{themes.map((theme) => <button key={theme.id} className={`appearance-theme ${ambientTheme === theme.id ? 'selected' : ''} ${theme.id}`} onClick={() => selectTheme(theme.id)}><span className="theme-icon">{theme.icon}</span><strong>{theme.name}</strong><small>{theme.detail}</small></button>)}<button className={`appearance-theme classic ${ambientTheme === 'classic' ? 'selected' : ''}`} onClick={() => selectTheme('classic')}><span className="theme-icon"><Sparkles size={20} /></span><strong>Nightcode classic</strong><small>Original dark workspace</small></button></div><div className="accent-section"><b>Accent colour</b><div className="accent-options">{accents.map((option) => <button key={option.id} className={`accent-option ${option.id} ${accent === option.id ? 'selected' : ''}`} onClick={() => setAccent(option.id)}><span></span>{option.name}</button>)}</div></div><div className="appearance-sound"><div><b>Ambient sound</b><span>{ambientSound === 'lofi' ? 'Lofi mode is playing underneath' : ambientSound === 'theme' ? 'Theme ambience enabled' : 'Sound is muted'}</span></div><div className="sound-options">{(['theme', 'lofi', 'off'] as AmbientSound[]).map((sound) => <button key={sound} className={ambientSound === sound ? 'active' : ''} onClick={() => setAmbientSound(sound)}>{sound === 'theme' ? 'Theme' : sound === 'lofi' ? 'Lofi' : 'Off'}</button>)}</div></div><label><span>Autosave changes</span><input type="checkbox" checked={autosave} onChange={(event) => setAutosave(event.target.checked)} /></label><label><span>Editor minimap</span><input type="checkbox" checked={minimap} onChange={(event) => setMinimap(event.target.checked)} /></label><button className="settings-done" onClick={onClose}>Done</button></section></motion.div>
 }
 
 function NewFilePanel({ onClose, onCreate }: { onClose: () => void; onCreate: (extension: string) => void }) {
@@ -238,15 +308,28 @@ function NewFilePanel({ onClose, onCreate }: { onClose: () => void; onCreate: (e
 
 function BottomPanel() { const [tab, setTab] = useState('Terminal'); const [collapsed, setCollapsed] = useState(false); const [expanded, setExpanded] = useState(false); return <section className={`bottom-panel ${collapsed ? 'collapsed' : ''} ${expanded ? 'expanded' : ''}`}><div className="bottom-tabs">{['Terminal', 'Problems', 'Output'].map((item) => <button key={item} className={tab === item ? 'active' : ''} onClick={() => { setTab(item); setCollapsed(false) }}>{item}{item === 'Problems' && <span className="problem-badge">2</span>}</button>)}<div className="bottom-actions"><button aria-label={collapsed ? 'Expand panel' : 'Collapse panel'} title={collapsed ? 'Expand panel' : 'Collapse panel'} onClick={() => setCollapsed(!collapsed)}><PanelBottom size={15} /></button><button aria-label={expanded ? 'Restore panel' : 'Maximize panel'} title={expanded ? 'Restore panel' : 'Maximize panel'} onClick={() => { setExpanded(!expanded); setCollapsed(false) }}><Maximize2 size={14} /></button></div></div>{!collapsed && (tab === 'Terminal' ? <div className="terminal"><div><span className="prompt">➜</span> <span className="path">~/nightcode-project</span> <span className="branch">git:(main)</span></div><div className="terminal-line">npm run dev</div><div className="terminal-success"><CircleCheck size={14} /> ready in 412ms · <span>http://localhost:5173</span></div><div><span className="prompt">➜</span><span className="cursor-block"></span></div></div> : <div className="panel-message">{tab === 'Problems' ? <><CircleAlert size={17} /><span>2 warnings in this workspace. Nothing blocking your flow.</span></> : <><CircleCheck size={17} /><span>Build succeeded 14 seconds ago.</span></>}</div>)}</section> }
 
+function WelcomeScreen({ onOpenFile, onNewFile }: { onOpenFile: () => void; onNewFile: () => void }) {
+  return <motion.div className="welcome-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><section className="welcome-card"><div className="welcome-mark"><Code2 size={28} /></div><span className="welcome-kicker">NIGHTCODE WORKSPACE</span><h1>Make something weird.</h1><p>A focused coding desk for shipping ideas with a little atmosphere.</p><div className="welcome-actions"><button onClick={onOpenFile}><FolderOpen size={16} /> Open project</button><button onClick={onNewFile}><Plus size={16} /> New file</button></div><div className="welcome-shortcuts"><span><kbd>Ctrl</kbd><kbd>K</kbd> Command palette</span><span><kbd>Ctrl</kbd><kbd>S</kbd> Save current file</span></div></section></motion.div>
+}
+
 function App() {
   const { activeFile, openFiles, files, accent, sidebarOpen, setFiles, updateFile, setActiveFile, closeFile, setAccent, toggleSidebar } = useNightcode()
-  const [activeView, setActiveView] = useState('explorer'); const [paletteOpen, setPaletteOpen] = useState(false); const [copilotOpen, setCopilotOpen] = useState(false); const [focusOpen, setFocusOpen] = useState(false); const [wrappedOpen, setWrappedOpen] = useState(false); const [settingsOpen, setSettingsOpen] = useState(false); const [newFileOpen, setNewFileOpen] = useState(false); const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle'); const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle'); const [runOutput, setRunOutput] = useState(''); const [buildStatus, setBuildStatus] = useState<'idle' | 'building' | 'success' | 'error'>('idle')
-    const [autosave, setAutosave] = useState(true); const [minimap, setMinimap] = useState(true);
-  const [collaboration, setCollaboration] = useState({ connected: false, participants: 0 })
+  const [activeView, setActiveView] = useState('explorer'); const [paletteOpen, setPaletteOpen] = useState(false); const [copilotOpen, setCopilotOpen] = useState(false); const [focusOpen, setFocusOpen] = useState(false); const [wrappedOpen, setWrappedOpen] = useState(false); const [settingsOpen, setSettingsOpen] = useState(false); const [newFileOpen, setNewFileOpen] = useState(false); const [welcomeOpen, setWelcomeOpen] = useState(true); const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle'); const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle'); const [runOutput, setRunOutput] = useState(''); const [buildStatus, setBuildStatus] = useState<'idle' | 'building' | 'success' | 'error'>('idle')
+    const [autosave, setAutosave] = useState(true); const [minimap, setMinimap] = useState(true)
+  const [ambientTheme, setAmbientTheme] = useState<AmbientTheme>(() => (window.localStorage.getItem('nightcode-ambient-theme') as AmbientTheme) || 'classic')
+  const [ambientSound, setAmbientSound] = useState<AmbientSound>(() => (window.localStorage.getItem('nightcode-ambient-sound') as AmbientSound) || 'off')
+  const [diagnostics, setDiagnostics] = useState<Array<{ message: string; line: number }>>([])
+    const [soundRevision, setSoundRevision] = useState(0)
+  const activateSound = (sound: AmbientSound) => { setAmbientSound(sound); setSoundRevision((revision) => revision + 1) }
+  const [collaboration, setCollaboration] = useState({ connected: false, participants: 0, names: [] as string[] })
+  const [gitStatus, setGitStatus] = useState<GitStatus>({ branch: 'loading', clean: true, changes: [] })
   const collaborationSocket = useRef<WebSocket | null>(null)
+  const saveQueue = useRef(Promise.resolve())
   const currentFile = files.find((file) => file.name === activeFile) ?? files[0]
   const applyingRemoteChange = useRef(false)
-     const accentOptions: Accent[] = ['violet', 'lime', 'pink', 'cyan']
+  const ambientCleanup = useRef<(() => void) | null>(null)
+    const accentOptions: Accent[] = ['violet', 'lime', 'pink', 'cyan']
+    useEffect(() => { window.localStorage.setItem('nightcode-ambient-theme', ambientTheme); window.localStorage.setItem('nightcode-ambient-sound', ambientSound); ambientCleanup.current?.(); ambientCleanup.current = ambientTheme === 'classic' ? null : createAmbientSound(ambientTheme, ambientSound); return () => { ambientCleanup.current?.(); ambientCleanup.current = null } }, [ambientTheme, ambientSound, soundRevision])
   const buildProject = async () => {
     if (buildStatus === 'building') return
     setBuildStatus('building')
@@ -258,12 +341,19 @@ function App() {
       setBuildStatus('error')
     }
   }
+  const persistFile = (filePath: string, content: string) => {
+    const save = saveQueue.current.then(async () => {
+      const response = await fetch(`/api/file?path=${encodeURIComponent(filePath)}`, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: content })
+      if (!response.ok) throw new Error('Save failed.')
+    })
+    saveQueue.current = save.then(() => undefined, () => undefined)
+    return save
+  }
   const saveCurrentFile = async () => {
     if (!currentFile) return
     setSaveStatus('saving')
     try {
-      const response = await fetch(`/api/file?path=${encodeURIComponent(currentFile.path)}`, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: currentFile.content })
-      if (!response.ok) throw new Error('Save failed.')
+      await persistFile(currentFile.path, currentFile.content)
       setSaveStatus('saved')
       window.setTimeout(() => setSaveStatus('idle'), 1800)
     } catch {
@@ -299,6 +389,7 @@ function App() {
   useEffect(() => {
     fetch('/api/files').then((response) => response.json()).then((projectFiles: FileItem[]) => setFiles(projectFiles)).catch(() => undefined)
   }, [setFiles])
+  useEffect(() => { const refresh = () => { fetch('/api/git/status').then((response) => response.json()).then((status: GitStatus) => setGitStatus(status)).catch(() => undefined) }; refresh(); const timer = window.setInterval(refresh, 5000); return () => window.clearInterval(timer) }, [])
   useEffect(() => {
     let socket: WebSocket | null = null
     let reconnectTimer: number | undefined
@@ -314,7 +405,7 @@ function App() {
       socket.addEventListener('message', (event) => {
         try {
           const message = JSON.parse(event.data) as CollaborationMessage
-          if (message.type === 'presence') setCollaboration({ connected: true, participants: message.participants })
+          if (message.type === 'presence') setCollaboration({ connected: true, participants: message.participants, names: message.names })
           if (message.type === 'file-change') {
             const file = useNightcode.getState().files.find((item) => item.path === message.path)
             if (file) {
@@ -323,14 +414,14 @@ function App() {
             }
           }
         } catch {
-          setCollaboration({ connected: false, participants: 0 })
+          setCollaboration({ connected: false, participants: 0, names: [] })
         }
       })
       socket.addEventListener('close', () => {
-        setCollaboration({ connected: false, participants: 0 })
+        setCollaboration({ connected: false, participants: 0, names: [] })
         if (!stopped && reconnectTimer === undefined) reconnectTimer = window.setTimeout(() => { reconnectTimer = undefined; connect() }, 1500)
       })
-      socket.addEventListener('error', () => setCollaboration({ connected: false, participants: 0 }))
+      socket.addEventListener('error', () => setCollaboration({ connected: false, participants: 0, names: [] }))
     }
     connect()
     return () => { stopped = true; if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer); socket?.close(); collaborationSocket.current = null }
@@ -343,7 +434,7 @@ function App() {
     const changedFile = state.files.find((file) => file.content !== previousState.files.find((previous) => previous.path === file.path)?.content)
     if (changedFile && collaborationSocket.current?.readyState === WebSocket.OPEN) collaborationSocket.current.send(JSON.stringify({ type: 'file-change', path: changedFile.path, content: changedFile.content }))
   }), [])
-  useEffect(() => { const listener = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPaletteOpen(true) } if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void saveCurrentFile() } if (event.key === 'Escape') { setPaletteOpen(false); setFocusOpen(false) } }; window.addEventListener('keydown', listener); return () => window.removeEventListener('keydown', listener) }, [currentFile])
+  useEffect(() => { const listener = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setPaletteOpen(true) } if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') { event.preventDefault(); void saveCurrentFile() } if (event.key === 'Escape') { setPaletteOpen(false); setFocusOpen(false); setCopilotOpen(false); setWrappedOpen(false); setSettingsOpen(false); setNewFileOpen(false); setWelcomeOpen(false) } }; window.addEventListener('keydown', listener); return () => window.removeEventListener('keydown', listener) }, [currentFile])
   useEffect(() => {
     const listener = (event: MouseEvent) => {
       const target = event.target as Element
@@ -359,17 +450,16 @@ function App() {
     window.addEventListener('click', listener)
     return () => window.removeEventListener('click', listener)
   }, [activeFile, files, openFiles, setActiveFile, setFiles])
-  return <div className={`app accent-${accent} ${focusOpen ? 'focus-active' : ''}`}>
+  return <div className={`app accent-${accent} ambient-${ambientTheme} ${focusOpen ? 'focus-active' : ''}`}>
     <ActivityBar activeView={activeView} setActiveView={(view) => { setActiveView(view); if (view !== 'explorer' && !sidebarOpen) toggleSidebar() }} onSettings={() => setSettingsOpen(true)} />
     {sidebarOpen && <FileTree activeView={activeView} collaboration={collaboration} />}
     <main className="workspace">
       <header className="topbar"><div className="workspace-name"><span className="status-dot"></span><b>nightcode</b><span className="slash">/</span><span>nightcode-project</span></div><div className="top-actions"><button className="streak-button" onClick={() => setWrappedOpen(true)}><span>🔥</span> 18 day streak</button><button className="icon-text" onClick={() => setFocusOpen(true)}><Timer size={15} /> Focus</button><button className="icon-text copilot-trigger" onClick={() => setCopilotOpen(true)}><Sparkles size={15} /> Copilot</button><div className="avatar">M</div></div></header>
       <div className="editor-wrap"><div className="tabs-bar"><button className="sidebar-toggle" onClick={toggleSidebar}><PanelBottom size={16} /></button>{openFileItems.map((file) => <div className={activeFile === file.name ? 'editor-tab active' : 'editor-tab'} key={file.name} onClick={() => setActiveFile(file.name)}>{iconForFile(file)}<span>{file.name}</span>{activeFile === file.name && <CircleDot size={9} className="tab-dirty" />}<button className="tab-close" onClick={(event) => { event.stopPropagation(); closeFile(file.name) }}><X size={13} /></button></div>)}<button className="new-tab"><Plus size={16} /></button><div className="editor-tools"><button title="Split editor"><PanelBottom size={15} /></button><button title="More actions"><MoreHorizontal size={16} /></button></div></div><div className="breadcrumbs"><span>src</span><ChevronRight size={12} /><span className="breadcrumb-current">{currentFile.name}</span><ChevronRight size={12} /><span>{currentFile.name === 'App.tsx' ? 'App' : 'default'}</span><div className="language-label">{currentFile.language} <ChevronDown size={12} /></div></div><div className="editor-stage"><Editor height="100%" theme="nightcode" language={currentFile.language} value={currentFile.content} onChange={(value) => { if (value === undefined) return; updateFile(currentFile.name, value); if (autosave) void fetch(`/api/file?path=${encodeURIComponent(currentFile.path)}`, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: value }) }} options={{ minimap: { enabled: minimap }, fontFamily: 'JetBrains Mono, monospace', fontSize: 14, lineHeight: 24, padding: { top: 14 }, smoothScrolling: true, roundedSelection: true, scrollBeyondLastLine: false, automaticLayout: true }} beforeMount={(monaco) => { monaco.editor.defineTheme('nightcode', { base: 'vs-dark', inherit: true, rules: [{ token: 'keyword', foreground: 'C995FF' }, { token: 'string', foreground: 'B8E986' }, { token: 'comment', foreground: '686477', fontStyle: 'italic' }, { token: 'type', foreground: '64D7FF' }], colors: { 'editor.background': '#111116', 'editor.foreground': '#DCD9E5', 'editorLineNumber.foreground': '#45434E', 'editorLineNumber.activeForeground': '#A6A0B5', 'editorCursor.foreground': '#BF8CFF', 'editor.selectionBackground': '#42315d', 'editor.lineHighlightBackground': '#17161e', 'editorIndentGuide.background': '#24222d', 'minimap.background': '#111116' } }) }} /></div><BottomPanel /></div>
-      <footer className="statusbar"><div><span><GitBranch size={13} /> main</span><span><GitCommitHorizontal size={13} /> 3 changes</span><span className="sync"><CircleCheck size={13} /> synced</span></div><div><span><CircleAlert size={13} /> 2</span><span><CircleCheck size={13} /> 0</span><span>Ln 7, Col 31</span><span>Spaces: 2</span><span>UTF-8</span><span>{currentFile.language}</span></div></footer>
+      <footer className="statusbar"><div><span><GitBranch size={13} /> {gitStatus.branch}</span><span><GitCommitHorizontal size={13} /> {gitStatus.changes.length} changes</span><span className="sync">{saveStatus === 'saving' ? <Timer size={13} /> : saveStatus === 'error' ? <CircleAlert size={13} /> : <CircleCheck size={13} />} {saveStatus === 'saving' ? 'saving' : saveStatus === 'error' ? 'save failed' : gitStatus.clean ? 'clean' : 'unsaved changes'}</span></div><div><span><CircleAlert size={13} /> {runStatus === 'error' ? '1' : '0'}</span><span><CircleCheck size={13} /> {buildStatus === 'success' ? '0' : ''}</span><span>UTF-8</span><span>{currentFile.language}</span></div></footer>
     </main>
-    <div className="accent-picker">{accentOptions.map((option) => <button key={option} aria-label={`Use ${option} accent`} className={`swatch ${option} ${accent === option ? 'selected' : ''}`} onClick={() => setAccent(option)} />)}</div>
     {saveStatus !== 'idle' && <div className={`save-status ${saveStatus}`}>{saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : 'Save failed'}</div>}{runOutput && <div className={`run-output ${runStatus}`}>{runOutput}</div>}<button className="run-button" disabled={runStatus === 'running'} onClick={() => void runCurrentFile()}><Play size={16} />{runStatus === 'running' ? 'Running...' : 'Run'}</button><button className={`build-button ${buildStatus === 'error' ? 'build-error' : ''}`} disabled={buildStatus === 'building'} onClick={() => void buildProject()}>{buildStatus === 'building' ? <Timer size={17} /> : buildStatus === 'success' ? <CircleCheck size={17} /> : <Play size={16} />}{buildStatus === 'building' ? 'Building...' : buildStatus === 'success' ? 'Built beautifully' : buildStatus === 'error' ? 'Build failed' : 'Build'}</button>
-    <AnimatePresence>{paletteOpen && <CommandPalette key="palette" onClose={() => setPaletteOpen(false)} onCommand={runCommand} />}{copilotOpen && currentFile && <CopilotPanel key="copilot" file={currentFile} onClose={() => setCopilotOpen(false)} />}{focusOpen && <FocusPanel key="focus" onClose={() => setFocusOpen(false)} />}{wrappedOpen && <Wrapped key="wrapped" onClose={() => setWrappedOpen(false)} />}{settingsOpen && <SettingsPanel key="settings" autosave={autosave} minimap={minimap} setAutosave={setAutosave} setMinimap={setMinimap} onClose={() => setSettingsOpen(false)} />}{newFileOpen && <NewFilePanel key="new-file" onClose={() => setNewFileOpen(false)} onCreate={(extension) => { const number = files.filter((file) => file.name.startsWith('Untitled')).length + 1; const name = `Untitled-${number}.${extension}`; void fetch('/api/files', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, content: '' }) }).then(async (response) => { if (!response.ok) throw new Error('Unable to create file.'); const file = await response.json() as FileItem; setFiles([...useNightcode.getState().files, file]); useNightcode.getState().openFile(file.name); setNewFileOpen(false) }).catch(() => undefined) }} />}</AnimatePresence>
+    <AnimatePresence>{welcomeOpen && <WelcomeScreen key="welcome" onOpenFile={() => setWelcomeOpen(false)} onNewFile={() => { setWelcomeOpen(false); setNewFileOpen(true) }} />}{paletteOpen && <CommandPalette key="palette" onClose={() => setPaletteOpen(false)} onCommand={runCommand} />}{copilotOpen && currentFile && <CopilotPanel key="copilot" file={currentFile} onClose={() => setCopilotOpen(false)} />}{focusOpen && <FocusPanel key="focus" onClose={() => setFocusOpen(false)} />}{wrappedOpen && <Wrapped key="wrapped" onClose={() => setWrappedOpen(false)} />}{settingsOpen && <SettingsPanel key="settings" autosave={autosave} minimap={minimap} setAutosave={setAutosave} setMinimap={setMinimap} accent={accent} setAccent={setAccent} ambientTheme={ambientTheme} setAmbientTheme={setAmbientTheme} ambientSound={ambientSound} setAmbientSound={setAmbientSound} onClose={() => setSettingsOpen(false)} />}{newFileOpen && <NewFilePanel key="new-file" onClose={() => setNewFileOpen(false)} onCreate={(extension) => { const number = files.filter((file) => file.name.startsWith('Untitled')).length + 1; const name = `Untitled-${number}.${extension}`; void fetch('/api/files', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, content: '' }) }).then(async (response) => { if (!response.ok) throw new Error('Unable to create file.'); const file = await response.json() as FileItem; setFiles([...useNightcode.getState().files, file]); useNightcode.getState().openFile(file.name); setNewFileOpen(false) }).catch(() => undefined) }} />}</AnimatePresence>
   </div>
 }
 

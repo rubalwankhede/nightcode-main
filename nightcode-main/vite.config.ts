@@ -8,6 +8,7 @@ import { WebSocketServer, WebSocket } from 'ws'
 import { requestAiCompletion } from './server/services/ai'
 
 const editableFiles = ['src/App.tsx', 'src/styles.css', 'package.json', 'vite.config.ts', 'index.html']
+const fileWriteQueues = new Map<string, Promise<void>>()
 const statsPath = path.resolve('server/data/stats.json')
 const snippetsPath = path.resolve('server/data/snippets.json')
 const themesPath = path.resolve('server/data/themes.json')
@@ -42,7 +43,7 @@ const runProcess = (command: string, args: string[], cwd: string) => new Promise
   execFile(command, args, { cwd, timeout: 5000, maxBuffer: 256 * 1024 }, (error, stdout, stderr) => resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, output: `${stdout}${stderr}`.trim() }))
 })
 
-type CollaborationClient = { socket: WebSocket; id: string }
+type CollaborationClient = { socket: WebSocket; id: string; name: string }
 type StatsEvent = { timestamp: string; path: string; language: string; charactersChanged: number }
 
 let statsWriteQueue = Promise.resolve()
@@ -71,16 +72,17 @@ const apiPlugin = () => ({
     const clients = new Set<CollaborationClient>()
     const collaborationServer = new WebSocketServer({ noServer: true })
     collaborationServer.on('connection', (socket: WebSocket) => {
-      const client = { socket, id: randomUUID() }
+      const client = { socket, id: randomUUID(), name: 'Guest' }
       clients.add(client)
       const broadcastPresence = () => {
-        const message = JSON.stringify({ type: 'presence', participants: clients.size })
+        const message = JSON.stringify({ type: 'presence', participants: clients.size, names: Array.from(clients, (item) => item.name) })
         clients.forEach(({ socket: peer }) => { if (peer.readyState === WebSocket.OPEN) peer.send(message) })
       }
       broadcastPresence()
       socket.on('message', (raw) => {
         try {
-          const message = JSON.parse(raw.toString()) as { type?: string; path?: string; content?: string }
+          const message = JSON.parse(raw.toString()) as { type?: string; path?: string; content?: string; name?: string }
+          if (message.type === 'join' && message.name?.trim()) { client.name = message.name.trim().slice(0, 24); broadcastPresence(); return }
           if (message.type !== 'file-change' || !message.path || typeof message.content !== 'string') return
           if (!editableFiles.includes(message.path)) return
           const outgoing = JSON.stringify({ type: 'file-change', path: message.path, content: message.content, clientId: client.id })
@@ -229,12 +231,37 @@ const apiPlugin = () => ({
       request.on('data', (chunk: Buffer) => chunks.push(chunk))
       request.on('end', async () => {
         const content = Buffer.concat(chunks).toString('utf8')
-        const previousContent = await fs.readFile(path.resolve(requestedPath), 'utf8').catch(() => '')
-        await fs.writeFile(path.resolve(requestedPath), content, 'utf8')
-        await recordStatsEvent({ timestamp: new Date().toISOString(), path: requestedPath, language: languageFor(requestedPath), charactersChanged: changedCharacterCount(previousContent, content) })
-        response.setHeader('Content-Type', 'application/json')
-        response.end(JSON.stringify({ ok: true, path: requestedPath }))
+        const previousWrite = fileWriteQueues.get(requestedPath) ?? Promise.resolve()
+        const write = previousWrite.then(async () => {
+          const previousContent = await fs.readFile(path.resolve(requestedPath), 'utf8').catch(() => '')
+          await fs.writeFile(path.resolve(requestedPath), content, 'utf8')
+          await recordStatsEvent({ timestamp: new Date().toISOString(), path: requestedPath, language: languageFor(requestedPath), charactersChanged: changedCharacterCount(previousContent, content) })
+        })
+        fileWriteQueues.set(requestedPath, write.then(() => undefined, () => undefined))
+        try {
+          await write
+          response.setHeader('Content-Type', 'application/json')
+          response.end(JSON.stringify({ ok: true, path: requestedPath }))
+        } catch {
+          response.statusCode = 500
+          response.end(JSON.stringify({ error: 'Save failed.' }))
+        }
       })
+    })
+    server.middlewares.use('/api/git/status', async (request: { method?: string }, response: { setHeader: Function; end: Function; statusCode: number }, next: Function) => {
+      if (request.method !== 'GET') return next()
+      try {
+        const [branch, porcelain] = await Promise.all([
+          runProcess('git', ['branch', '--show-current'], process.cwd()),
+          runProcess('git', ['status', '--short'], process.cwd()),
+        ])
+        const changes = porcelain.output ? porcelain.output.split('\n').filter(Boolean).map((line) => ({ index: line.slice(0, 1), worktree: line.slice(1, 2), path: line.slice(3) })) : []
+        response.setHeader('Content-Type', 'application/json')
+        response.end(JSON.stringify({ branch: branch.output || 'detached', clean: changes.length === 0, changes }))
+      } catch (error) {
+        response.statusCode = 500
+        response.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Unable to read Git status.' }))
+      }
     })
     server.middlewares.use('/api/build', (request: { method?: string }, response: { setHeader: Function; end: Function; statusCode: number }, next: Function) => {
       if (request.method !== 'POST') return next()
@@ -263,7 +290,7 @@ const apiPlugin = () => ({
           python: { file: 'main.py', command: process.platform === 'win32' ? 'python.exe' : 'python3', args: (file) => [file] },
         }
         if (language === 'c' || language === 'cpp') {
-          const compiler = process.platform === 'win32' ? 'gcc.exe' : 'gcc'
+          const compiler = language === 'cpp' ? (process.platform === 'win32' ? 'g++.exe' : 'g++') : (process.platform === 'win32' ? 'gcc.exe' : 'gcc')
           temporaryDirectory = await fs.mkdtemp(path.join(process.cwd(), '.nightcode-run-'))
           const sourceFile = path.join(temporaryDirectory, language === 'c' ? 'main.c' : 'main.cpp')
           const outputFile = path.join(temporaryDirectory, process.platform === 'win32' ? 'main.exe' : 'main')
