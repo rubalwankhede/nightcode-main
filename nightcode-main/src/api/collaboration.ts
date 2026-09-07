@@ -1,6 +1,6 @@
 export type CollaborationMessage =
   | { type: 'join'; name: string }
-  | { type: 'presence'; participants: number }
+  | { type: 'presence'; participants: number; names: string[] }
   | { type: 'file-change'; path: string; content: string; clientId: string }
   | { type: 'error'; message: string }
 
