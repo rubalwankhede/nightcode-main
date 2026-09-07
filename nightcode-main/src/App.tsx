@@ -44,7 +44,7 @@ const fallbackFiles: FileItem[] = [
 
 const useNightcode = create<Store>((set) => ({
   activeFile: 'App.tsx',
-  openFiles: ['App.tsx', 'package.json', 'README.md'],
+  openFiles: ['App.tsx', 'package.json'],
   files: fallbackFiles,
   accent: 'violet',
   sidebarOpen: true,
@@ -314,7 +314,8 @@ function WelcomeScreen({ onOpenFile, onNewFile }: { onOpenFile: () => void; onNe
 
 function App() {
   const { activeFile, openFiles, files, accent, sidebarOpen, setFiles, updateFile, setActiveFile, closeFile, setAccent, toggleSidebar } = useNightcode()
-  const [activeView, setActiveView] = useState('explorer'); const [paletteOpen, setPaletteOpen] = useState(false); const [copilotOpen, setCopilotOpen] = useState(false); const [focusOpen, setFocusOpen] = useState(false); const [wrappedOpen, setWrappedOpen] = useState(false); const [settingsOpen, setSettingsOpen] = useState(false); const [newFileOpen, setNewFileOpen] = useState(false); const [welcomeOpen, setWelcomeOpen] = useState(true); const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle'); const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle'); const [runOutput, setRunOutput] = useState(''); const [buildStatus, setBuildStatus] = useState<'idle' | 'building' | 'success' | 'error'>('idle')
+  const [activeView, setActiveView] = useState('explorer'); const [paletteOpen, setPaletteOpen] = useState(false); const [copilotOpen, setCopilotOpen] = useState(false); const [focusOpen, setFocusOpen] = useState(false); const [wrappedOpen, setWrappedOpen] = useState(false); const [settingsOpen, setSettingsOpen] = useState(false); const [newFileOpen, setNewFileOpen] = useState(false); const [welcomeOpen, setWelcomeOpen] = useState(() => window.localStorage.getItem('nightcode-welcome-dismissed') !== 'true'); const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle'); const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle'); const [runOutput, setRunOutput] = useState(''); const [buildStatus, setBuildStatus] = useState<'idle' | 'building' | 'success' | 'error'>('idle')
+  const dismissWelcome = () => { window.localStorage.setItem('nightcode-welcome-dismissed', 'true'); setWelcomeOpen(false) }
     const [autosave, setAutosave] = useState(true); const [minimap, setMinimap] = useState(true)
   const [ambientTheme, setAmbientTheme] = useState<AmbientTheme>(() => (window.localStorage.getItem('nightcode-ambient-theme') as AmbientTheme) || 'classic')
   const [ambientSound, setAmbientSound] = useState<AmbientSound>(() => (window.localStorage.getItem('nightcode-ambient-sound') as AmbientSound) || 'off')
@@ -389,6 +390,9 @@ function App() {
   useEffect(() => {
     fetch('/api/files').then((response) => response.json()).then((projectFiles: FileItem[]) => setFiles(projectFiles)).catch(() => undefined)
   }, [setFiles])
+  useEffect(() => {
+    if (!welcomeOpen) window.localStorage.setItem('nightcode-welcome-dismissed', 'true')
+  }, [welcomeOpen])
   useEffect(() => { const refresh = () => { fetch('/api/git/status').then((response) => response.json()).then((status: GitStatus) => setGitStatus(status)).catch(() => undefined) }; refresh(); const timer = window.setInterval(refresh, 5000); return () => window.clearInterval(timer) }, [])
   useEffect(() => {
     let socket: WebSocket | null = null
