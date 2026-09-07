@@ -126,6 +126,7 @@ body { min-width: 0; background: #15191d; }
 .appearance-theme { background: #20292e; border-color: #374047; }
 .appearance-theme.selected { box-shadow: none; }
 .theme-preview { border-radius: 3px; }
+.mobile-sidebar-close { display: none; background: transparent; color: #9ba7ad; padding: 4px; }
 button:focus-visible, input:focus-visible { outline: 2px solid #f06a3a; outline-offset: 2px; }
 @media (max-width: 760px) {
 	body { overflow: hidden; }
@@ -135,6 +136,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid #f06a3a; outline-
 	.activity-button { height: 46px; width: 46px; }
 	.activity-button.active:before { left: 0; right: 0; bottom: -4px; top: auto; width: auto; height: 2px; }
 	.sidebar { position: fixed; z-index: 7; top: 0; bottom: 54px; left: 0; width: min(290px, 86vw); min-width: 0; box-shadow: 12px 0 30px rgba(0,0,0,.28); }
+	.mobile-sidebar-close { display: grid; place-items: center; }
 	.topbar { padding: 0 12px; }
 	.top-actions .icon-text { display: flex; padding: 5px; }
 	.bottom-panel { height: 112px; min-height: 112px; }
