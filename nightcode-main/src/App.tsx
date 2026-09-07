@@ -324,6 +324,7 @@ function App() {
   const [collaboration, setCollaboration] = useState({ connected: false, participants: 0, names: [] as string[] })
   const [gitStatus, setGitStatus] = useState<GitStatus>({ branch: 'loading', clean: true, changes: [] })
   const collaborationSocket = useRef<WebSocket | null>(null)
+  const saveQueue = useRef(Promise.resolve())
   const currentFile = files.find((file) => file.name === activeFile) ?? files[0]
   const applyingRemoteChange = useRef(false)
   const ambientCleanup = useRef<(() => void) | null>(null)
@@ -340,12 +341,19 @@ function App() {
       setBuildStatus('error')
     }
   }
+  const persistFile = (filePath: string, content: string) => {
+    const save = saveQueue.current.then(async () => {
+      const response = await fetch(`/api/file?path=${encodeURIComponent(filePath)}`, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: content })
+      if (!response.ok) throw new Error('Save failed.')
+    })
+    saveQueue.current = save.then(() => undefined, () => undefined)
+    return save
+  }
   const saveCurrentFile = async () => {
     if (!currentFile) return
     setSaveStatus('saving')
     try {
-      const response = await fetch(`/api/file?path=${encodeURIComponent(currentFile.path)}`, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: currentFile.content })
-      if (!response.ok) throw new Error('Save failed.')
+      await persistFile(currentFile.path, currentFile.content)
       setSaveStatus('saved')
       window.setTimeout(() => setSaveStatus('idle'), 1800)
     } catch {

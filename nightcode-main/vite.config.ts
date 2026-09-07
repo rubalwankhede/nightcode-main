@@ -8,6 +8,7 @@ import { WebSocketServer, WebSocket } from 'ws'
 import { requestAiCompletion } from './server/services/ai'
 
 const editableFiles = ['src/App.tsx', 'src/styles.css', 'package.json', 'vite.config.ts', 'index.html']
+const fileWriteQueues = new Map<string, Promise<void>>()
 const statsPath = path.resolve('server/data/stats.json')
 const snippetsPath = path.resolve('server/data/snippets.json')
 const themesPath = path.resolve('server/data/themes.json')
@@ -230,11 +231,21 @@ const apiPlugin = () => ({
       request.on('data', (chunk: Buffer) => chunks.push(chunk))
       request.on('end', async () => {
         const content = Buffer.concat(chunks).toString('utf8')
-        const previousContent = await fs.readFile(path.resolve(requestedPath), 'utf8').catch(() => '')
-        await fs.writeFile(path.resolve(requestedPath), content, 'utf8')
-        await recordStatsEvent({ timestamp: new Date().toISOString(), path: requestedPath, language: languageFor(requestedPath), charactersChanged: changedCharacterCount(previousContent, content) })
-        response.setHeader('Content-Type', 'application/json')
-        response.end(JSON.stringify({ ok: true, path: requestedPath }))
+        const previousWrite = fileWriteQueues.get(requestedPath) ?? Promise.resolve()
+        const write = previousWrite.then(async () => {
+          const previousContent = await fs.readFile(path.resolve(requestedPath), 'utf8').catch(() => '')
+          await fs.writeFile(path.resolve(requestedPath), content, 'utf8')
+          await recordStatsEvent({ timestamp: new Date().toISOString(), path: requestedPath, language: languageFor(requestedPath), charactersChanged: changedCharacterCount(previousContent, content) })
+        })
+        fileWriteQueues.set(requestedPath, write.then(() => undefined, () => undefined))
+        try {
+          await write
+          response.setHeader('Content-Type', 'application/json')
+          response.end(JSON.stringify({ ok: true, path: requestedPath }))
+        } catch {
+          response.statusCode = 500
+          response.end(JSON.stringify({ error: 'Save failed.' }))
+        }
       })
     })
     server.middlewares.use('/api/git/status', async (request: { method?: string }, response: { setHeader: Function; end: Function; statusCode: number }, next: Function) => {
