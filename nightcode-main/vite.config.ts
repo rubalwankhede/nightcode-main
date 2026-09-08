@@ -287,6 +287,7 @@ const apiPlugin = () => ({
         if (!content.trim() || content.length > 20000) { response.statusCode = 400; response.end(JSON.stringify({ error: 'Provide between 1 and 20,000 characters of code.' })); return }
         const configuration: Record<string, { file: string; command: string; args: (file: string) => string[] }> = {
           javascript: { file: 'main.js', command: process.execPath, args: (file) => [file] },
+          typescript: { file: 'main.ts', command: process.platform === 'win32' ? 'npx.cmd' : 'npx', args: (file) => ['tsx', file] },
           python: { file: 'main.py', command: process.platform === 'win32' ? 'python.exe' : 'python3', args: (file) => [file] },
         }
         if (language === 'c' || language === 'cpp') {

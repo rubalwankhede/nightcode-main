@@ -9,7 +9,18 @@ export type AiRequest = {
 
 export async function requestAiCompletion({ messages }: AiRequest): Promise<string> {
   const apiKey = process.env.AI_API_KEY
-  if (!apiKey) throw new Error('AI_API_KEY is not configured on the server.')
+  if (!apiKey) {
+    const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content?.trim() || 'the current project task'
+    return [
+      'AI is offline in this session, so here is a practical fallback suggestion:',
+      '',
+      `- Start by isolating the exact issue in ${latestUserMessage.slice(0, 160) || 'the current task'}.`,
+      '- Verify data flow, then patch the smallest relevant function or API handler.',
+      '- Re-run the action and confirm the result in the browser before moving on.',
+      '',
+      'If you configure AI_API_KEY on the server, the live assistant can replace this fallback with a richer response.'
+    ].join('\n')
+  }
 
   const baseUrl = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '')
   const model = process.env.AI_MODEL || 'gpt-4o-mini'

@@ -12,8 +12,7 @@ import {
   Command, Copy, FileCode2, FileJson, FileText, FolderOpen,
   GitBranch, GitCommitHorizontal, LayoutGrid, Maximize2,
   CloudLightning, MoreHorizontal, PanelBottom, Play, Plus, Radio, Search, Settings2,
-  Sparkles, Timer, Wind, X, Zap
-} from 'lucide-react'
+  Sparkles, Timer
 
 type Accent = 'violet' | 'lime' | 'pink' | 'cyan'
 type AmbientTheme = 'classic' | 'sakura' | 'storm'
@@ -44,7 +43,7 @@ const fallbackFiles: FileItem[] = [
 
 const useNightcode = create<Store>((set) => ({
   activeFile: 'App.tsx',
-  openFiles: ['App.tsx', 'package.json'],
+  openFiles: ['App.tsx', 'package.json', 'README.md'],
   files: fallbackFiles,
   accent: 'violet',
   sidebarOpen: true,
@@ -105,7 +104,7 @@ function ActivityBar({ activeView, setActiveView, onSettings }: { activeView: st
   </aside>
 }
 
-function FileTree({ activeView, collaboration, onCloseMobile }: { activeView: string; collaboration: { connected: boolean; participants: number; names: string[] }; onCloseMobile: () => void }) {
+function FileTree({ activeView, collaboration }: { activeView: string; collaboration: { connected: boolean; participants: number; names: string[] } }) {
   const { activeFile, openFile, setAccent, files } = useNightcode()
   const [expanded, setExpanded] = useState(true)
   const [query, setQuery] = useState('')
@@ -156,7 +155,7 @@ function FileTree({ activeView, collaboration, onCloseMobile }: { activeView: st
   if (activeView === 'search') return <aside className="sidebar"><div className="sidebar-title"><span>SEARCH</span><MoreHorizontal size={17} /></div><div className="feature-view snippet-view"><div className="feature-kicker"><Sparkles size={15} /> SNIPPET FEED</div>{snippetError && <div className="copilot-error">{snippetError}</div>}{snippet ? <><strong>{snippet.title}</strong><span className="feature-author">by {snippet.author} · {snippet.tag}</span><code>{snippet.code}</code><div className="feature-actions"><button disabled={reactionPending} className={snippet.reacted ? 'liked' : ''} onClick={() => void reactToSnippet()}>🔥 {snippet.reacted ? 'liked' : 'vibe it'} · {snippet.reactionCount}</button><button disabled={!snippets.length} onClick={() => setSnippetIndex((snippetIndex + 1) % snippets.length)}>next tip <ChevronRight size={13} /></button></div><span className="feed-count">{snippetIndex + 1} / {snippets.length} · persisted reactions</span></> : !snippetError && <span>Loading snippets...</span>}</div></aside>
   if (activeView === 'run') return <aside className="sidebar"><div className="sidebar-title"><span>CODING STATS</span><MoreHorizontal size={17} /></div><CodingStats /></aside>
   return <aside className="sidebar">
-    <div className="sidebar-title"><span>{activeView === 'explorer' ? 'EXPLORER' : activeView.toUpperCase()}</span>{activeView === 'source' && <small className={collaboration.connected ? 'collaboration-online' : 'collaboration-offline'}>{collaboration.connected ? `${collaboration.participants} CONNECTED` : 'OFFLINE'}</small>}<button className="mobile-sidebar-close" aria-label="Close project panel" onClick={onCloseMobile}><X size={16} /></button><MoreHorizontal size={17} /></div>
+    <div className="sidebar-title"><span>{activeView === 'explorer' ? 'EXPLORER' : activeView.toUpperCase()}</span>{activeView === 'source' && <small className={collaboration.connected ? 'collaboration-online' : 'collaboration-offline'}>{collaboration.connected ? `${collaboration.participants} LIVE` : 'OFFLINE'}</small>}<MoreHorizontal size={17} /></div>
     {activeView === 'explorer' ? <>
       <div className="file-search"><Search size={13} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter files" /></div>
       <button className="root-folder" onClick={() => setExpanded(!expanded)}>{expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}<FolderOpen size={15} className="folder-icon" /> nightcode-project</button>
@@ -314,8 +313,7 @@ function WelcomeScreen({ onOpenFile, onNewFile }: { onOpenFile: () => void; onNe
 
 function App() {
   const { activeFile, openFiles, files, accent, sidebarOpen, setFiles, updateFile, setActiveFile, closeFile, setAccent, toggleSidebar } = useNightcode()
-  const [activeView, setActiveView] = useState('explorer'); const [paletteOpen, setPaletteOpen] = useState(false); const [copilotOpen, setCopilotOpen] = useState(false); const [focusOpen, setFocusOpen] = useState(false); const [wrappedOpen, setWrappedOpen] = useState(false); const [settingsOpen, setSettingsOpen] = useState(false); const [newFileOpen, setNewFileOpen] = useState(false); const [welcomeOpen, setWelcomeOpen] = useState(() => window.localStorage.getItem('nightcode-welcome-dismissed') !== 'true'); const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle'); const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle'); const [runOutput, setRunOutput] = useState(''); const [buildStatus, setBuildStatus] = useState<'idle' | 'building' | 'success' | 'error'>('idle')
-  const dismissWelcome = () => { window.localStorage.setItem('nightcode-welcome-dismissed', 'true'); setWelcomeOpen(false) }
+  const [activeView, setActiveView] = useState('explorer'); const [paletteOpen, setPaletteOpen] = useState(false); const [copilotOpen, setCopilotOpen] = useState(false); const [focusOpen, setFocusOpen] = useState(false); const [wrappedOpen, setWrappedOpen] = useState(false); const [settingsOpen, setSettingsOpen] = useState(false); const [newFileOpen, setNewFileOpen] = useState(false); const [welcomeOpen, setWelcomeOpen] = useState(true); const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle'); const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle'); const [runOutput, setRunOutput] = useState(''); const [buildStatus, setBuildStatus] = useState<'idle' | 'building' | 'success' | 'error'>('idle')
     const [autosave, setAutosave] = useState(true); const [minimap, setMinimap] = useState(true)
   const [ambientTheme, setAmbientTheme] = useState<AmbientTheme>(() => (window.localStorage.getItem('nightcode-ambient-theme') as AmbientTheme) || 'classic')
   const [ambientSound, setAmbientSound] = useState<AmbientSound>(() => (window.localStorage.getItem('nightcode-ambient-sound') as AmbientSound) || 'off')
@@ -325,7 +323,6 @@ function App() {
   const [collaboration, setCollaboration] = useState({ connected: false, participants: 0, names: [] as string[] })
   const [gitStatus, setGitStatus] = useState<GitStatus>({ branch: 'loading', clean: true, changes: [] })
   const collaborationSocket = useRef<WebSocket | null>(null)
-  const saveQueue = useRef(Promise.resolve())
   const currentFile = files.find((file) => file.name === activeFile) ?? files[0]
   const applyingRemoteChange = useRef(false)
   const ambientCleanup = useRef<(() => void) | null>(null)
@@ -342,19 +339,12 @@ function App() {
       setBuildStatus('error')
     }
   }
-  const persistFile = (filePath: string, content: string) => {
-    const save = saveQueue.current.then(async () => {
-      const response = await fetch(`/api/file?path=${encodeURIComponent(filePath)}`, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: content })
-      if (!response.ok) throw new Error('Save failed.')
-    })
-    saveQueue.current = save.then(() => undefined, () => undefined)
-    return save
-  }
   const saveCurrentFile = async () => {
     if (!currentFile) return
     setSaveStatus('saving')
     try {
-      await persistFile(currentFile.path, currentFile.content)
+      const response = await fetch(`/api/file?path=${encodeURIComponent(currentFile.path)}`, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: currentFile.content })
+      if (!response.ok) throw new Error('Save failed.')
       setSaveStatus('saved')
       window.setTimeout(() => setSaveStatus('idle'), 1800)
     } catch {
@@ -390,9 +380,6 @@ function App() {
   useEffect(() => {
     fetch('/api/files').then((response) => response.json()).then((projectFiles: FileItem[]) => setFiles(projectFiles)).catch(() => undefined)
   }, [setFiles])
-  useEffect(() => {
-    if (!welcomeOpen) window.localStorage.setItem('nightcode-welcome-dismissed', 'true')
-  }, [welcomeOpen])
   useEffect(() => { const refresh = () => { fetch('/api/git/status').then((response) => response.json()).then((status: GitStatus) => setGitStatus(status)).catch(() => undefined) }; refresh(); const timer = window.setInterval(refresh, 5000); return () => window.clearInterval(timer) }, [])
   useEffect(() => {
     let socket: WebSocket | null = null
@@ -456,9 +443,9 @@ function App() {
   }, [activeFile, files, openFiles, setActiveFile, setFiles])
   return <div className={`app accent-${accent} ambient-${ambientTheme} ${focusOpen ? 'focus-active' : ''}`}>
     <ActivityBar activeView={activeView} setActiveView={(view) => { setActiveView(view); if (view !== 'explorer' && !sidebarOpen) toggleSidebar() }} onSettings={() => setSettingsOpen(true)} />
-    {sidebarOpen && <FileTree activeView={activeView} collaboration={collaboration} onCloseMobile={toggleSidebar} />}
+    {sidebarOpen && <FileTree activeView={activeView} collaboration={collaboration} />}
     <main className="workspace">
-      <header className="topbar"><div className="workspace-name"><span className="status-dot"></span><b>nightcode</b><span className="slash">/</span><span>nightcode-project</span></div><div className="top-actions"><button className="streak-button" onClick={() => setWrappedOpen(true)}><Timer size={15} /> Activity</button><button className="icon-text" onClick={() => setFocusOpen(true)}><Timer size={15} /> Focus</button><button className="icon-text copilot-trigger" onClick={() => setCopilotOpen(true)}><Sparkles size={15} /> Copilot</button><div className="avatar">M</div></div></header>
+      <header className="topbar"><div className="workspace-name"><span className="status-dot"></span><b>nightcode</b><span className="slash">/</span><span>nightcode-project</span></div><div className="top-actions"><button className="streak-button" onClick={() => setWrappedOpen(true)}><span>🔥</span> 18 day streak</button><button className="icon-text" onClick={() => setFocusOpen(true)}><Timer size={15} /> Focus</button><button className="icon-text copilot-trigger" onClick={() => setCopilotOpen(true)}><Sparkles size={15} /> Copilot</button><div className="avatar">M</div></div></header>
       <div className="editor-wrap"><div className="tabs-bar"><button className="sidebar-toggle" onClick={toggleSidebar}><PanelBottom size={16} /></button>{openFileItems.map((file) => <div className={activeFile === file.name ? 'editor-tab active' : 'editor-tab'} key={file.name} onClick={() => setActiveFile(file.name)}>{iconForFile(file)}<span>{file.name}</span>{activeFile === file.name && <CircleDot size={9} className="tab-dirty" />}<button className="tab-close" onClick={(event) => { event.stopPropagation(); closeFile(file.name) }}><X size={13} /></button></div>)}<button className="new-tab"><Plus size={16} /></button><div className="editor-tools"><button title="Split editor"><PanelBottom size={15} /></button><button title="More actions"><MoreHorizontal size={16} /></button></div></div><div className="breadcrumbs"><span>src</span><ChevronRight size={12} /><span className="breadcrumb-current">{currentFile.name}</span><ChevronRight size={12} /><span>{currentFile.name === 'App.tsx' ? 'App' : 'default'}</span><div className="language-label">{currentFile.language} <ChevronDown size={12} /></div></div><div className="editor-stage"><Editor height="100%" theme="nightcode" language={currentFile.language} value={currentFile.content} onChange={(value) => { if (value === undefined) return; updateFile(currentFile.name, value); if (autosave) void fetch(`/api/file?path=${encodeURIComponent(currentFile.path)}`, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: value }) }} options={{ minimap: { enabled: minimap }, fontFamily: 'JetBrains Mono, monospace', fontSize: 14, lineHeight: 24, padding: { top: 14 }, smoothScrolling: true, roundedSelection: true, scrollBeyondLastLine: false, automaticLayout: true }} beforeMount={(monaco) => { monaco.editor.defineTheme('nightcode', { base: 'vs-dark', inherit: true, rules: [{ token: 'keyword', foreground: 'C995FF' }, { token: 'string', foreground: 'B8E986' }, { token: 'comment', foreground: '686477', fontStyle: 'italic' }, { token: 'type', foreground: '64D7FF' }], colors: { 'editor.background': '#111116', 'editor.foreground': '#DCD9E5', 'editorLineNumber.foreground': '#45434E', 'editorLineNumber.activeForeground': '#A6A0B5', 'editorCursor.foreground': '#BF8CFF', 'editor.selectionBackground': '#42315d', 'editor.lineHighlightBackground': '#17161e', 'editorIndentGuide.background': '#24222d', 'minimap.background': '#111116' } }) }} /></div><BottomPanel /></div>
       <footer className="statusbar"><div><span><GitBranch size={13} /> {gitStatus.branch}</span><span><GitCommitHorizontal size={13} /> {gitStatus.changes.length} changes</span><span className="sync">{saveStatus === 'saving' ? <Timer size={13} /> : saveStatus === 'error' ? <CircleAlert size={13} /> : <CircleCheck size={13} />} {saveStatus === 'saving' ? 'saving' : saveStatus === 'error' ? 'save failed' : gitStatus.clean ? 'clean' : 'unsaved changes'}</span></div><div><span><CircleAlert size={13} /> {runStatus === 'error' ? '1' : '0'}</span><span><CircleCheck size={13} /> {buildStatus === 'success' ? '0' : ''}</span><span>UTF-8</span><span>{currentFile.language}</span></div></footer>
     </main>
